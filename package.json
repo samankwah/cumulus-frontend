@@ -1,0 +1,36 @@
+{
+  "name": "cumulus-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20 <25"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "start:server": "next start",
+    "typecheck": "tsc --noEmit",
+    "smoke": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test",
+    "smoke:headed": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test --headed",
+    "smoke:integration": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test -c playwright.integration.config.ts --workers=1",
+    "smoke:integration:headed": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test -c playwright.integration.config.ts --workers=1 --headed"
+  },
+  "dependencies": {
+    "@types/geojson": "^7946.0.16",
+    "leaflet": "^1.9.4",
+    "next": "^14.2.28",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "recharts": "^2.15.3"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.17",
+    "@types/node": "^22.15.3",
+    "@types/react": "^18.3.22",
+    "@types/react-dom": "^18.3.7",
+    "@playwright/test": "^1.54.2",
+    "typescript": "^5.8.3"
+  }
+}

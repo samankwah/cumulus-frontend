@@ -1,8 +1,8 @@
 "use client";
 
+import { ProductRequestContext } from "@/components/product-request-context";
 import {
   formatDateTime,
-  normalizeSeasonalCopy,
   seasonProfileLabel,
   thematicTitle,
 } from "@/lib/dashboard";
@@ -13,6 +13,7 @@ import type {
   SeasonalMapAreaItem,
   SeasonalMapProduct,
   SeasonalMapSelection,
+  SeasonalProductRequest,
   SeasonalTheme,
 } from "@/lib/types";
 
@@ -25,35 +26,14 @@ function titleForSelection(mode: DashboardMode, selection: SeasonalMapSelection 
 
 function selectionDescription(selection: SeasonalMapSelection | null, selectedArea: SeasonalMapAreaItem | null) {
   if (selectedArea) {
-    return `${selectedArea.region_name}${selectedArea.geography_type === "district" ? " Region" : ""}. ${normalizeSeasonalCopy(selectedArea.coverage_note)}`;
+    return `${selectedArea.region_name}${selectedArea.geography_type === "district" ? " Region" : ""}`;
   }
 
   if (!selection) {
-    return "Select a district or region to inspect the published Ghana seasonal classification.";
+    return "";
   }
 
-  return `${selection.regionName}${selection.geographyType === "district" ? " Region" : ""}. The drawer can be reopened without clearing the current highlighted geography.`;
-}
-
-function SelectionContext({
-  selection,
-  thematicMode,
-  seasonProfile,
-  calendarSubseason,
-}: {
-  selection: SeasonalMapSelection;
-  thematicMode: SeasonalTheme;
-  seasonProfile: SeasonProfile;
-  calendarSubseason: CalendarSubseason | null;
-}) {
-  return (
-    <div className="meta-row">
-      <span className="meta-pill">Mode: {selection.geographyType === "region" ? "Region" : "District"}</span>
-      <span className="meta-pill">Variable: {thematicTitle(thematicMode)}</span>
-      <span className="meta-pill">Seasonal regime: {seasonProfileLabel(seasonProfile)}</span>
-      {calendarSubseason ? <span className="meta-pill">Sub-season: {calendarSubseason}</span> : null}
-    </div>
-  );
+  return `${selection.regionName}${selection.geographyType === "district" ? " Region" : ""}`;
 }
 
 export function DashboardDrawer({
@@ -64,9 +44,12 @@ export function DashboardDrawer({
   selectedArea,
   thematicMode,
   seasonProfile,
+  seasonalMetricMode,
   calendarSubseason,
   mode,
   productError,
+  productConfigurationMessage,
+  requestedProduct,
   isProductLoading,
   isRetrying,
   onRetryProduct,
@@ -78,20 +61,33 @@ export function DashboardDrawer({
   selectedArea: SeasonalMapAreaItem | null;
   thematicMode: SeasonalTheme | null;
   seasonProfile: SeasonProfile | null;
+  seasonalMetricMode: "seasonal" | "calendar";
   calendarSubseason: CalendarSubseason | null;
   mode: DashboardMode;
   productError: string | null;
+  productConfigurationMessage: string | null;
+  requestedProduct: SeasonalProductRequest | null;
   isProductLoading: boolean;
   isRetrying: boolean;
   onRetryProduct: () => void;
 }) {
   const selectedMetric = selectedArea?.metric ?? null;
-  const isConfigurationMissing = Boolean(selection) && (!thematicMode || !seasonProfile);
+  const requestContext =
+    requestedProduct ??
+    (thematicMode && seasonProfile
+      ? {
+          theme: thematicMode,
+          seasonProfile,
+          seasonalMetricMode,
+          calendarSubseason: seasonalMetricMode === "calendar" ? calendarSubseason : null,
+        }
+      : null);
+  const isConfigurationMissing = Boolean(selection) && (!thematicMode || !seasonProfile || productConfigurationMessage);
   const isSelectionLoading = Boolean(selection) && !isConfigurationMissing && isProductLoading && !selectedArea;
   const hasResolvedData = Boolean(selection && thematicMode && seasonProfile && selectedArea && selectedMetric && product);
   const isUnavailable = Boolean(selection) && !isConfigurationMissing && !isSelectionLoading && !hasResolvedData;
   const unavailableMessage =
-    productError ?? "No published record available for this geography in the current Ghana seasonal product.";
+    productError ?? "No published seasonal product exists for the current request. That combination has not been generated or published yet.";
 
   return (
     <aside data-testid="dashboard-drawer" className={isOpen ? "drawer open" : "drawer"}>
@@ -99,7 +95,7 @@ export function DashboardDrawer({
         <div>
           <span className="section-kicker">{mode === "region" ? "Regional summary" : "District summary"}</span>
           <h2>{titleForSelection(mode, selection)}</h2>
-          <p>{selectionDescription(selection, selectedArea)}</p>
+          {selectionDescription(selection, selectedArea) ? <p>{selectionDescription(selection, selectedArea)}</p> : null}
         </div>
         <button
           type="button"
@@ -135,7 +131,7 @@ export function DashboardDrawer({
               <span>
                 {!thematicMode || !seasonProfile
                   ? "Choose both a variable and a season to load the published seasonal classification for this geography."
-                  : "Choose a sub-season to load the calendar-based seasonal classification for this geography."}
+                  : productConfigurationMessage ?? "Choose a sub-season to load the calendar-based seasonal classification for this geography."}
               </span>
             </article>
           </section>
@@ -151,12 +147,13 @@ export function DashboardDrawer({
                 <h3>Fetching seasonal map data</h3>
               </div>
             </div>
-            {thematicMode && seasonProfile ? (
-              <SelectionContext
-                selection={selection}
-                thematicMode={thematicMode}
-                seasonProfile={seasonProfile}
-                calendarSubseason={calendarSubseason}
+            {requestContext ? (
+              <ProductRequestContext
+                thematicMode={requestContext.theme}
+                seasonProfile={requestContext.seasonProfile}
+                seasonalMetricMode={requestContext.seasonalMetricMode}
+                calendarSubseason={requestContext.calendarSubseason}
+                geographyTypeLabel={selection.geographyType === "region" ? "Region" : "District"}
               />
             ) : null}
             <article className="empty-card">
@@ -176,15 +173,17 @@ export function DashboardDrawer({
                 <h3>Published product not available</h3>
               </div>
             </div>
-            {thematicMode && seasonProfile ? (
-              <SelectionContext
-                selection={selection}
-                thematicMode={thematicMode}
-                seasonProfile={seasonProfile}
-                calendarSubseason={calendarSubseason}
+            {requestContext ? (
+              <ProductRequestContext
+                thematicMode={requestContext.theme}
+                seasonProfile={requestContext.seasonProfile}
+                seasonalMetricMode={requestContext.seasonalMetricMode}
+                calendarSubseason={requestContext.calendarSubseason}
+                geographyTypeLabel={selection.geographyType === "region" ? "Region" : "District"}
               />
             ) : null}
             <article className="empty-card drawer-error" data-testid="selection-unavailable">
+              <span className="card-eyebrow">Published product unavailable</span>
               <p>{unavailableMessage}</p>
               <span>{selection.geographyName} remains highlighted so you can retry without losing map context.</span>
             </article>
@@ -210,12 +209,15 @@ export function DashboardDrawer({
                 {calendarSubseason ? `, ${calendarSubseason}` : ""}
               </p>
             </div>
-            <SelectionContext
-              selection={selection}
-              thematicMode={thematicMode}
-              seasonProfile={seasonProfile}
-              calendarSubseason={calendarSubseason}
-            />
+            {requestContext ? (
+              <ProductRequestContext
+                thematicMode={requestContext.theme}
+                seasonProfile={requestContext.seasonProfile}
+                seasonalMetricMode={requestContext.seasonalMetricMode}
+                calendarSubseason={requestContext.calendarSubseason}
+                geographyTypeLabel={selection.geographyType === "region" ? "Region" : "District"}
+              />
+            ) : null}
             <article className="advisory-card" data-testid="selection-summary">
               <div className="card-header">
                 <span className="card-eyebrow">{thematicTitle(selectedMetric.theme)}</span>
@@ -224,8 +226,6 @@ export function DashboardDrawer({
                 </span>
               </div>
               <h4>{selectedMetric.display_value}</h4>
-              <p className="card-recommendation">{normalizeSeasonalCopy(selectedMetric.interpretation)}</p>
-              <p className="card-reason">{normalizeSeasonalCopy(selectedMetric.criteria_note)}</p>
             </article>
           </section>
 

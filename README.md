@@ -1,14 +1,15 @@
 # Cumulus Frontend
 
-Standalone Next.js agro-weather dashboard for Ghana.
+Standalone Next.js seasonal advisory map for Ghana.
 
 ## What it includes
 
 - Ghana district and region choropleth map with `react-leaflet`
-- District point calls to `POST /predict` and `POST /advisory`
-- Regional composites built client-side from mapped district requests
-- Daily rainfall chart with corrected and raw rainfall series
-- Farmer-facing advisory cards for planting, dry spell, and irrigation
+- Published classified seasonal products loaded from `GET /seasonal-map/active`
+- Seasonal regime and sub-season controls for onset, cessation, dry spell, rainfall total, and rainy-day products
+- District and regional drill-down with published metric metadata, legend hints, and freshness status
+- Backend-generated ERA5 and GFS products served as source-specific artifacts
+- In-situ station data consumed on the backend for training and calibration rather than as a direct frontend map layer
 
 ## Run locally
 
@@ -54,7 +55,7 @@ powershell -ExecutionPolicy Bypass -File .\frontend\start-frontend-production-lo
 
 These defaults point the frontend to `http://127.0.0.1:8000` and the backend to `data/sample_forecast_smoke.nc` unless you already set the relevant environment variables.
 
-Map polygons stay local in `frontend/public/data/*.geojson`. Forecast values and farmer advisory values come from the backend APIs, which now prefer downloaded ERA5 and GFS data registered under `data/raw`.
+Map polygons stay local in `frontend/public/data/*.geojson`. The frontend renders backend-generated seasonal classifications rather than raw forecast rasters. ERA5 and GFS remain backend source options under `data/raw`, and in-situ station data is used for training/calibration rather than as a direct map layer.
 
 ## Build checks
 
@@ -75,7 +76,7 @@ If the browser console shows hashed chunk 404s and the missing filenames do not 
 
 ## Browser smoke test
 
-The browser smoke test builds the Next.js app first, then starts the production server in the same workflow, intercepts the forecast and advisory HTTP calls in the browser, and clicks through one district and one region selection in Chrome.
+The browser smoke test builds the Next.js app first, then starts the production server in the same workflow, intercepts `GET /seasonal-map/active` in the browser, and clicks through one district and one region selection in Chrome.
 
 The smoke harness uses the locally installed Chrome browser through Playwright. If Chrome is not installed on the machine, install it first or switch the Playwright channel in [playwright.config.ts](C:\Users\CRAFT\Desktop\future MEST projects\Backend\cumulus\frontend\playwright.config.ts).
 
@@ -89,7 +90,7 @@ The smoke harness sets `NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1` so the initial br
 
 ## Real API integration smoke
 
-The integration smoke test builds the Next.js app first, then starts the production server in the same workflow alongside the local FastAPI backend, points the frontend at `http://127.0.0.1:8000`, and drives the map UI through the real `/predict` and `/advisory` endpoints. If no raw ERA5 or GFS manifest has been downloaded locally, the backend helper falls back to `data/sample_forecast_smoke.nc`.
+The integration smoke test builds the Next.js app first, then starts the production server in the same workflow alongside the local FastAPI backend, points the frontend at `http://127.0.0.1:8000`, generates published seasonal products through `/seasonal-map/generate`, and drives the map UI through the real `/seasonal-map/active` endpoint. If no raw ERA5 or GFS manifest has been downloaded locally, the backend helper falls back to `data/sample_forecast_smoke.nc`.
 
 Run the real integration harness:
 

@@ -49,6 +49,14 @@ export function supportsCalendarMode(theme: SeasonalTheme | null) {
   return theme === "rainfall_amount" || theme === "rainy_days";
 }
 
+export function requiresCalendarSubseason(theme: SeasonalTheme | null) {
+  return supportsCalendarMode(theme);
+}
+
+export function usesRegimeBoundFootprint(theme: SeasonalTheme) {
+  return theme === "onset" || theme === "cessation" || theme === "early_dry_spell" || theme === "late_dry_spell";
+}
+
 export function seasonalModeLabel(mode: SeasonalMode) {
   return SEASONAL_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? "Seasonal";
 }
@@ -76,31 +84,37 @@ export function seasonalThemeDescription(
   const profileLabel = seasonProfileLabel(profile);
   if (theme === "onset") {
     if (profile === "southern_minor") {
-      return `${profileLabel} onset date monitoring starts from 15 Aug using 20 mm in 3 consecutive days, with no dry spell longer than 10 days in the next 30 days.`;
+      return `${profileLabel} onset date monitoring starts from 15 Aug using 20 mm in 3 consecutive days, with no dry spell longer than 10 days in the next 30 days. Map shading appears only inside the matching agro-ecological footprint.`;
     }
     const startDate = profile === "northern_single" ? "15 Mar" : "01 Feb";
-    return `${profileLabel} onset date monitoring starts from ${startDate} using at least 20 mm in up to 3 days, with no dry spell longer than 10 days in the next 30 days.`;
+    return `${profileLabel} onset date monitoring starts from ${startDate} using at least 20 mm in up to 3 days, with no dry spell longer than 10 days in the next 30 days. Map shading appears only inside the matching agro-ecological footprint.`;
   }
   if (theme === "cessation") {
     const startDate = profile === "southern_major" ? "01 Jul" : "01 Oct";
-    return `${profileLabel} cessation date monitoring starts from ${startDate} using soil water balance depletion from 70 mm with 4 mm/day evapotranspiration.`;
+    return `${profileLabel} cessation date monitoring starts from ${startDate} using soil water balance depletion from 70 mm with 4 mm/day evapotranspiration. Map shading appears only inside the matching agro-ecological footprint.`;
   }
   if (theme === "early_dry_spell") {
-    return `${profileLabel} early-season dry spell is the longest dry run from onset date to day 50.`;
+    return `${profileLabel} early-season dry spell is the longest dry run from onset date to day 50. Map shading appears only inside the matching agro-ecological footprint.`;
   }
   if (theme === "late_dry_spell") {
-    return `${profileLabel} late-season dry spell is the longest dry run from day 51 to cessation date.`;
+    return `${profileLabel} late-season dry spell is the longest dry run from day 51 to cessation date. Map shading appears only inside the matching agro-ecological footprint.`;
   }
   if (theme === "rainfall_amount") {
-    if (mode === "calendar" && subseason) {
-      return `${profileLabel} calendar rainfall total is accumulated only within the ${subseason} reporting window.`;
+    if (!subseason) {
+      return `${profileLabel} rainfall totals are published only for calendar reporting windows. Select a sub-season to load this map.`;
     }
-    return `${profileLabel} seasonal rainfall total is accumulated from detected onset date to detected cessation date under the selected Ghana seasonal regime.`;
+    if (mode === "calendar") {
+      return `${profileLabel} calendar rainfall total is accumulated only within the ${subseason} reporting window. Map shading remains nationwide even when this seasonal profile is selected.`;
+    }
+    return `${profileLabel} seasonal rainfall total is accumulated from detected onset date to detected cessation date under the selected Ghana seasonal regime. Map shading remains nationwide even when this seasonal profile is selected.`;
+  }
+  if (!subseason) {
+    return `${profileLabel} rainy-day totals are published only for calendar reporting windows. Select a sub-season to load this map.`;
   }
   if (mode === "calendar" && subseason) {
-    return `${profileLabel} rainy days are counted only within the ${subseason} reporting window.`;
+    return `${profileLabel} rainy days are counted only within the ${subseason} reporting window. Map shading remains nationwide even when this seasonal profile is selected.`;
   }
-  return `${profileLabel} number of rainy days is counted from detected onset date to detected cessation date under the selected Ghana seasonal regime.`;
+  return `${profileLabel} number of rainy days is counted from detected onset date to detected cessation date under the selected Ghana seasonal regime. Map shading remains nationwide even when this seasonal profile is selected.`;
 }
 
 export function formatDate(value: string) {

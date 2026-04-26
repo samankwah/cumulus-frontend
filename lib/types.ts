@@ -209,6 +209,13 @@ export type SeasonalMapSelection = {
   regionName: string;
 };
 
+export type SeasonalProductRequest = {
+  theme: SeasonalTheme;
+  seasonProfile: SeasonProfile;
+  seasonalMetricMode: SeasonalMode;
+  calendarSubseason: CalendarSubseason | null;
+};
+
 export type SeasonalMapProduct = {
   product_id: string;
   theme: SeasonalTheme;

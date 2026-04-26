@@ -221,12 +221,32 @@ export async function getActiveSeasonalMap(
 
 export function formatApiError(error: unknown) {
   if (error instanceof ApiError) {
-    return error.message;
+    if (error.code === "seasonal_map_artifacts_not_available") {
+      return "No active seasonal product exists for this selection. That combination has not been generated or published yet.";
+    }
+    if (error.code === "invalid_response") {
+      return "Backend seasonal artifact lookup failed because the response shape was invalid.";
+    }
+    if (error.status >= 500) {
+      return `Backend seasonal artifact lookup failed. ${error.message}`;
+    }
+    return `Seasonal product request is invalid. ${error.message}`;
   }
 
   if (error instanceof Error) {
-    return error.message;
+    return `Frontend seasonal product request failed. ${error.message}`;
   }
 
   return "Unexpected frontend error.";
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+export function getApiErrorCode(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.code;
+  }
+  return null;
 }

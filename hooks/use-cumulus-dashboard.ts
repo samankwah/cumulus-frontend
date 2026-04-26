@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { getActiveSeasonalMap, formatApiError } from "@/lib/api";
-import { calendarSubseasonOptions, supportsCalendarMode } from "@/lib/dashboard";
+import { formatApiError, getActiveSeasonalMap } from "@/lib/api";
+import { calendarSubseasonOptions, requiresCalendarSubseason, supportsCalendarMode } from "@/lib/dashboard";
 import { loadMapData } from "@/lib/map-data";
 import type {
   CalendarSubseason,
@@ -14,6 +14,7 @@ import type {
   RegionFeatureCollection,
   SeasonProfile,
   SeasonalMapAreaItem,
+  SeasonalProductRequest,
   SeasonalMode,
   SeasonalMapProduct,
   SeasonalMapSelection,
@@ -21,6 +22,20 @@ import type {
 } from "@/lib/types";
 
 const DEFAULT_REFRESH_INTERVAL_SECONDS = 1800;
+
+function buildProductRequest(
+  theme: SeasonalTheme,
+  seasonProfile: SeasonProfile,
+  seasonalMetricMode: SeasonalMode,
+  calendarSubseason: CalendarSubseason | null,
+): SeasonalProductRequest {
+  return {
+    theme,
+    seasonProfile,
+    seasonalMetricMode,
+    calendarSubseason: seasonalMetricMode === "calendar" ? calendarSubseason : null,
+  };
+}
 
 export function useCumulusDashboard() {
   const [mode, setMode] = useState<DashboardMode>("region");
@@ -35,13 +50,22 @@ export function useCumulusDashboard() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [product, setProduct] = useState<SeasonalMapProduct | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
+  const [requestedProduct, setRequestedProduct] = useState<SeasonalProductRequest | null>(null);
   const [isProductLoading, setIsProductLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedGeography, setSelectedGeography] = useState<SeasonalMapSelection | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const fetchIdRef = useRef(0);
-  const seasonalMetricMode: SeasonalMode =
-    supportsCalendarMode(thematicMode) && calendarSubseason ? "calendar" : "seasonal";
+  const seasonalMetricMode: SeasonalMode = supportsCalendarMode(thematicMode) ? "calendar" : "seasonal";
+  const isCalendarSubseasonRequired = requiresCalendarSubseason(thematicMode);
+  const isCalendarSubseasonValid =
+    !seasonProfile || !calendarSubseason || calendarSubseasonOptions(seasonProfile).includes(calendarSubseason);
+  const isSubseasonSelectionMissing = Boolean(
+    thematicMode && seasonProfile && isCalendarSubseasonRequired && (!calendarSubseason || !isCalendarSubseasonValid),
+  );
+  const productConfigurationMessage = isSubseasonSelectionMissing
+    ? "Select a sub-season to load the published calendar-based product for this seasonal regime."
+    : null;
 
   useEffect(() => {
     let ignore = false;
@@ -83,7 +107,9 @@ export function useCumulusDashboard() {
       options?: { background?: boolean },
     ) => {
       const requestId = fetchIdRef.current + 1;
+      const request = buildProductRequest(nextTheme, nextSeasonProfile, nextMetricMode, nextSubseason);
       fetchIdRef.current = requestId;
+      setRequestedProduct(request);
       setProductError(null);
 
       if (options?.background) {
@@ -94,7 +120,12 @@ export function useCumulusDashboard() {
       }
 
       try {
-        const payload = await getActiveSeasonalMap(nextTheme, nextSeasonProfile, nextMetricMode, nextSubseason);
+        const payload = await getActiveSeasonalMap(
+          request.theme,
+          request.seasonProfile,
+          request.seasonalMetricMode,
+          request.calendarSubseason,
+        );
         if (fetchIdRef.current !== requestId) {
           return;
         }
@@ -122,16 +153,26 @@ export function useCumulusDashboard() {
     if (!thematicMode || !seasonProfile) {
       setProduct(null);
       setProductError(null);
+      setRequestedProduct(null);
+      setIsProductLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
+
+    if (isSubseasonSelectionMissing) {
+      setProduct(null);
+      setProductError(null);
+      setRequestedProduct(null);
       setIsProductLoading(false);
       setIsRefreshing(false);
       return;
     }
 
     void fetchProduct(thematicMode, seasonProfile, seasonalMetricMode, calendarSubseason);
-  }, [calendarSubseason, fetchProduct, seasonProfile, seasonalMetricMode, thematicMode]);
+  }, [calendarSubseason, fetchProduct, isSubseasonSelectionMissing, seasonProfile, seasonalMetricMode, thematicMode]);
 
   useEffect(() => {
-    if (!thematicMode || !seasonProfile || !product) {
+    if (!thematicMode || !seasonProfile || !product || isSubseasonSelectionMissing) {
       return;
     }
 
@@ -142,7 +183,15 @@ export function useCumulusDashboard() {
     return () => {
       window.clearInterval(handle);
     };
-  }, [calendarSubseason, fetchProduct, product?.refresh_interval_seconds, seasonProfile, seasonalMetricMode, thematicMode]);
+  }, [
+    calendarSubseason,
+    fetchProduct,
+    isSubseasonSelectionMissing,
+    product?.refresh_interval_seconds,
+    seasonProfile,
+    seasonalMetricMode,
+    thematicMode,
+  ]);
 
   useEffect(() => {
     if (!thematicMode || !supportsCalendarMode(thematicMode)) {
@@ -168,7 +217,6 @@ export function useCumulusDashboard() {
     () => Object.fromEntries((product?.region_items ?? []).map((item) => [item.geography_name, item])),
     [product?.region_items],
   );
-
   const selectedDistrictId = selectedGeography?.geographyType === "district" ? selectedGeography.geographyKey : null;
   const selectedRegionName = selectedGeography?.geographyType === "region" ? selectedGeography.geographyKey : null;
 
@@ -250,11 +298,11 @@ export function useCumulusDashboard() {
   }
 
   const retryProduct = useCallback(() => {
-    if (!thematicMode || !seasonProfile) {
+    if (!thematicMode || !seasonProfile || isSubseasonSelectionMissing) {
       return;
     }
     void fetchProduct(thematicMode, seasonProfile, seasonalMetricMode, calendarSubseason);
-  }, [calendarSubseason, fetchProduct, seasonProfile, seasonalMetricMode, thematicMode]);
+  }, [calendarSubseason, fetchProduct, isSubseasonSelectionMissing, seasonProfile, seasonalMetricMode, thematicMode]);
 
   return {
     mode,
@@ -273,6 +321,8 @@ export function useCumulusDashboard() {
     mapError,
     product,
     productError,
+    productConfigurationMessage,
+    requestedProduct,
     isProductLoading,
     isRefreshing,
     selectedGeography,

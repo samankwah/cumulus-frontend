@@ -1,32 +1,17 @@
 import type { APIRequestContext } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
-async function generateProduct(
-  request: APIRequestContext,
-  theme: string,
-  seasonProfile: string,
-  mode: string,
-  subseason?: string,
-) {
-  const params = new URLSearchParams({ theme, season_profile: seasonProfile, mode });
-  if (subseason) {
-    params.set("subseason", subseason);
-  }
-  const response = await request.post(
-    `http://127.0.0.1:8000/seasonal-map/generate?${params.toString()}`,
-  );
+async function refreshProducts(request: APIRequestContext) {
+  const response = await request.post("http://127.0.0.1:8000/seasonal-map/refresh");
   if (!response.ok()) {
-    throw new Error(`seasonal-map generate failed (${response.status()}): ${await response.text()}`);
+    throw new Error(`seasonal-map refresh failed (${response.status()}): ${await response.text()}`);
   }
 }
 
 test("seasonal map selections work against the real smoke backend", async ({ page, request }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(360_000);
 
-  await generateProduct(request, "onset", "northern_single", "seasonal");
-  await generateProduct(request, "onset", "southern_minor", "seasonal");
-  await generateProduct(request, "rainfall_amount", "southern_minor", "seasonal");
-  await generateProduct(request, "rainfall_amount", "southern_major", "calendar", "MAM");
+  await refreshProducts(request);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -56,10 +41,23 @@ test("seasonal map selections work against the real smoke backend", async ({ pag
   await page.getByTestId("season-profile-select").selectOption("southern_minor");
   await expect(page.getByText("Seasonal regime: Southern Minor Season")).toBeVisible({ timeout: 30_000 });
 
+  await page.getByTestId("theme-select").selectOption("cessation");
+  await expect(page.getByTestId("selection-summary")).toContainText("Cessation Date", { timeout: 30_000 });
+  await page.getByTestId("theme-select").selectOption("early_dry_spell");
+  await expect(page.getByTestId("selection-summary")).toContainText("Early-Season Dry Spell", { timeout: 30_000 });
+  await page.getByTestId("theme-select").selectOption("late_dry_spell");
+  await expect(page.getByTestId("selection-summary")).toContainText("Late-Season Dry Spell", { timeout: 30_000 });
+
   await page.getByTestId("theme-select").selectOption("rainfall_amount");
-  await expect(page.getByTestId("selection-summary")).toContainText("Seasonal Rainfall Total", { timeout: 30_000 });
+  await expect(page.getByTestId("product-configuration-needed")).toContainText("Configuration needed", { timeout: 30_000 });
+  await expect(page.getByTestId("dashboard-drawer")).toContainText("Select a sub-season", { timeout: 30_000 });
   await page.getByTestId("season-profile-select").selectOption("southern_major");
   await expect(page.getByTestId("subseason-select")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("subseason-select").selectOption("MAM");
   await expect(page.getByText("Sub-season: MAM")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByTestId("theme-select").selectOption("rainy_days");
+  await expect(page.getByTestId("product-configuration-needed")).toContainText("Configuration needed", { timeout: 30_000 });
+  await page.getByTestId("subseason-select").selectOption("MAM");
+  await expect(page.getByTestId("selection-summary")).toContainText("Number of Rainy Days", { timeout: 30_000 });
 });

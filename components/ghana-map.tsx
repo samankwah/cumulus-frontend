@@ -34,24 +34,46 @@ function metricColor(item: SeasonalMapAreaItem | null | undefined, theme: Season
   return "#7b877f";
 }
 
-function regionStyle(color: string, isSelected: boolean, isHovered = false) {
+function isThemedArea(item: SeasonalMapAreaItem | null | undefined, theme: SeasonalTheme | null) {
+  return item?.metric.theme === theme;
+}
+
+function regionStyle(color: string, isSelected: boolean, isThemed: boolean, isHovered = false) {
   return {
     fillColor: color,
     color: isSelected ? "#ffe3a6" : isHovered ? "rgba(255, 246, 217, 0.98)" : "rgba(240, 245, 241, 0.88)",
     weight: isSelected ? 5.6 : isHovered ? 4.1 : 2.7,
     opacity: 1,
-    fillOpacity: isSelected ? 0.78 : isHovered ? 0.64 : 0.48,
+    fillOpacity: isSelected ? 0.78 : isHovered && isThemed ? 0.64 : 0.48,
   };
 }
 
-function districtStyle(color: string, isSelected: boolean, isHovered = false) {
+function districtStyle(color: string, isSelected: boolean, isThemed: boolean, isHovered = false) {
   return {
     fillColor: color,
     color: isSelected ? "#ffd36f" : isHovered ? "rgba(255, 244, 201, 0.94)" : "rgba(233, 240, 236, 0.82)",
     weight: isSelected ? 3.8 : isHovered ? 2.8 : 1.4,
     opacity: 1,
-    fillOpacity: isSelected ? 0.9 : isHovered ? 0.78 : 0.64,
+    fillOpacity: isSelected ? 0.9 : isHovered && isThemed ? 0.78 : 0.64,
   };
+}
+
+function regionAreaStyle(
+  item: SeasonalMapAreaItem | null | undefined,
+  theme: SeasonalTheme | null,
+  isSelected: boolean,
+  isHovered = false,
+) {
+  return regionStyle(metricColor(item, theme), isSelected, isThemedArea(item, theme), isHovered);
+}
+
+function districtAreaStyle(
+  item: SeasonalMapAreaItem | null | undefined,
+  theme: SeasonalTheme | null,
+  isSelected: boolean,
+  isHovered = false,
+) {
+  return districtStyle(metricColor(item, theme), isSelected, isThemedArea(item, theme), isHovered);
 }
 
 function FitBoundsOnce() {
@@ -237,9 +259,7 @@ export function GhanaMap({
       if (mode === "region") {
         const area = regionItemsByName[mapLayer.feature.properties.region] ?? null;
         const isSelected = mapLayer.feature.properties.region === selectedRegionName;
-        mapLayer.setStyle(
-          regionStyle(metricColor(area, thematicMode), isSelected),
-        );
+        mapLayer.setStyle(regionAreaStyle(area, thematicMode, isSelected));
         if (isSelected) {
           mapLayer.bringToFront();
         }
@@ -248,9 +268,7 @@ export function GhanaMap({
 
       const districtFeature = mapLayer.feature as DistrictFeature;
       const area = districtItemsById[districtFeature.properties.location_id] ?? null;
-      mapLayer.setStyle(
-        districtStyle(metricColor(area, thematicMode), districtFeature.properties.location_id === selectedDistrictId),
-      );
+      mapLayer.setStyle(districtAreaStyle(area, thematicMode, districtFeature.properties.location_id === selectedDistrictId));
       if (districtFeature.properties.location_id === selectedDistrictId) {
         mapLayer.bringToFront();
       }
@@ -288,18 +306,14 @@ export function GhanaMap({
         if (mode === "region") {
           const isSelected = target.feature.properties.region === selectedRegionName;
           const area = regionItemsByName[target.feature.properties.region] ?? null;
-          target.setStyle(
-            regionStyle(metricColor(area, thematicMode), isSelected, !isSelected),
-          );
+          target.setStyle(regionAreaStyle(area, thematicMode, isSelected, !isSelected));
           return;
         }
 
         const districtFeature = target.feature as DistrictFeature;
         const isSelected = districtFeature.properties.location_id === selectedDistrictId;
         const area = districtItemsById[districtFeature.properties.location_id] ?? null;
-        target.setStyle(
-          districtStyle(metricColor(area, thematicMode), isSelected, !isSelected),
-        );
+        target.setStyle(districtAreaStyle(area, thematicMode, isSelected, !isSelected));
         target.bringToFront();
       },
       mouseout: (event: LeafletMouseEvent) => {
@@ -310,17 +324,13 @@ export function GhanaMap({
 
         if (mode === "region") {
           const area = regionItemsByName[target.feature.properties.region] ?? null;
-          target.setStyle(
-            regionStyle(metricColor(area, thematicMode), target.feature.properties.region === selectedRegionName),
-          );
+          target.setStyle(regionAreaStyle(area, thematicMode, target.feature.properties.region === selectedRegionName));
           return;
         }
 
         const districtFeature = target.feature as DistrictFeature;
         const area = districtItemsById[districtFeature.properties.location_id] ?? null;
-        target.setStyle(
-          districtStyle(metricColor(area, thematicMode), districtFeature.properties.location_id === selectedDistrictId),
-        );
+        target.setStyle(districtAreaStyle(area, thematicMode, districtFeature.properties.location_id === selectedDistrictId));
       },
     }),
     [
@@ -367,8 +377,9 @@ export function GhanaMap({
           }}
           data={regionFeatures}
           style={(feature) =>
-            regionStyle(
-              metricColor(regionItemsByName[feature?.properties.region ?? ""] ?? null, thematicMode),
+            regionAreaStyle(
+              regionItemsByName[feature?.properties.region ?? ""] ?? null,
+              thematicMode,
               feature?.properties.region === selectedRegionName,
             )
           }
@@ -396,8 +407,9 @@ export function GhanaMap({
             }}
             data={districtFeatures}
             style={(feature) =>
-              districtStyle(
-                metricColor(districtItemsById[feature?.properties.location_id ?? ""] ?? null, thematicMode),
+              districtAreaStyle(
+                districtItemsById[feature?.properties.location_id ?? ""] ?? null,
+                thematicMode,
                 feature?.properties.location_id === selectedDistrictId,
               )
             }

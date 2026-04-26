@@ -10,7 +10,11 @@
   --warning: #b36c2b;
   --danger: #b14d40;
   --shadow: 0 28px 90px rgba(15, 34, 26, 0.18);
-  --drawer-bg: linear-gradient(180deg, rgba(14, 29, 25, 0.76) 0%, rgba(21, 43, 36, 0.68) 100%);
+  --drawer-bg: linear-gradient(
+    180deg,
+    rgba(14, 29, 25, 0.76) 0%,
+    rgba(21, 43, 36, 0.68) 100%
+  );
   --drawer-card: rgba(255, 255, 255, 0.08);
   --drawer-card-strong: rgba(255, 255, 255, 0.12);
   --drawer-line: rgba(227, 238, 231, 0.14);
@@ -34,8 +38,16 @@ body {
   font-family: var(--font-body), sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(123, 168, 114, 0.22), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(79, 139, 165, 0.18), transparent 24%),
+    radial-gradient(
+      circle at top left,
+      rgba(123, 168, 114, 0.22),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(79, 139, 165, 0.18),
+      transparent 24%
+    ),
     linear-gradient(180deg, #eff3eb 0%, #e7eee5 100%);
 }
 
@@ -382,7 +394,11 @@ button {
 }
 
 .segmented button[aria-selected="true"] {
-  background: linear-gradient(180deg, rgba(109, 187, 153, 0.36) 0%, rgba(70, 137, 110, 0.28) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(109, 187, 153, 0.36) 0%,
+    rgba(70, 137, 110, 0.28) 100%
+  );
   color: #fbfdfb;
   border-color: rgba(214, 241, 229, 0.28);
   box-shadow:
@@ -478,11 +494,61 @@ button {
   margin: 0;
 }
 
-.floating-banner-content {
+.floating-banner-body,
+.floating-banner-copy,
+.floating-banner-request {
+  display: grid;
+}
+
+.floating-banner-body,
+.floating-banner-copy {
+  gap: 12px;
+}
+
+.floating-banner-request {
+  gap: 8px;
+  min-width: 0;
+}
+
+.floating-banner-kicker,
+.floating-banner-request-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.floating-banner-kicker {
+  color: var(--warning);
+}
+
+.floating-banner-request-label {
+  color: var(--muted);
+}
+
+.floating-banner-message {
+  color: rgba(19, 35, 29, 0.84);
+  line-height: 1.5;
+}
+
+.floating-banner-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  justify-content: flex-end;
+}
+
+.product-request-meta {
+  min-width: 0;
+}
+
+.product-request-meta .meta-pill {
+  max-width: 100%;
+}
+
+.floating-banner .meta-pill {
+  background: var(--accent-soft);
+  color: var(--ink);
+  border: 1px solid rgba(31, 108, 84, 0.14);
 }
 
 .banner-button {
@@ -810,9 +876,12 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .floating-banner-content {
-    align-items: flex-start;
-    flex-direction: column;
+  .floating-banner {
+    max-width: none;
+  }
+
+  .floating-banner-actions {
+    justify-content: flex-start;
   }
 
   .control-group-header {

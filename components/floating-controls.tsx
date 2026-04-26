@@ -2,13 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import {
-  calendarSubseasonOptions,
-  SEASON_PROFILE_OPTIONS,
-  seasonalThemeDescription,
-  supportsCalendarMode,
-  THEMATIC_OPTIONS,
-} from "@/lib/dashboard";
+import { calendarSubseasonOptions, SEASON_PROFILE_OPTIONS, supportsCalendarMode, THEMATIC_OPTIONS } from "@/lib/dashboard";
 import type {
   CalendarSubseason,
   DashboardMode,
@@ -73,10 +67,8 @@ export function FloatingControls({
   setCalendarSubseason: (subseason: CalendarSubseason | null) => void;
   thematicLegend: SeasonalLegendItem[];
 }) {
-  const activeThemeDescription =
-    thematicMode && seasonProfile
-      ? seasonalThemeDescription(thematicMode, seasonProfile, seasonalMetricMode, calendarSubseason)
-      : "";
+  void seasonalMetricMode;
+
   const showSubseasonControl = supportsCalendarMode(thematicMode) && Boolean(seasonProfile);
 
   return (
@@ -84,13 +76,12 @@ export function FloatingControls({
       <div className="control-card">
         <div className="brand-block">
           <span className="eyebrow">Operational seasonal outlook</span>
-          <h1>Ghana Seasonal Advisory Map</h1>
+          <h1>Seasonal Advisory Map</h1>
         </div>
 
         <div className="control-group">
           <div className="control-field">
             <span className="control-label">Map level</span>
-            <span className="control-help">Switch directly between regional boundaries and district polygons.</span>
             <div className="segmented segmented-dual" role="tablist" aria-label="Map level">
               <button
                 type="button"
@@ -119,7 +110,7 @@ export function FloatingControls({
         <div className="control-group">
           <DropdownField
             label="Variables"
-            help={activeThemeDescription}
+            help=""
             value={thematicMode ?? ""}
             onChange={(value) => setThematicMode(value ? (value as SeasonalTheme) : null)}
             testId="theme-select"
@@ -154,12 +145,12 @@ export function FloatingControls({
           <div className="control-group">
             <DropdownField
               label="Sub-season"
-              help="Available windows depend on the selected seasonal regime."
+              help=""
               value={calendarSubseason ?? ""}
               onChange={(value) => setCalendarSubseason(value ? (value as CalendarSubseason) : null)}
               testId="subseason-select"
             >
-              <option value="">Seasonal total</option>
+              <option value="">Select sub-season</option>
               {calendarSubseasonOptions(seasonProfile).map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -179,7 +170,6 @@ export function FloatingControls({
                 <i className="legend-swatch" style={{ backgroundColor: item.color }} />
                 <div>
                   <strong>{item.label}</strong>
-                  <small>{item.hint}</small>
                 </div>
               </div>
             ))}

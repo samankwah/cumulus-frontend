@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 
 import { DashboardDrawer } from "@/components/dashboard-drawer";
 import { FloatingControls } from "@/components/floating-controls";
+import { ProductRequestContext } from "@/components/product-request-context";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
 
 const GhanaMap = dynamic(
@@ -30,6 +31,8 @@ export function DashboardShell() {
     mapError,
     product,
     productError,
+    productConfigurationMessage,
+    requestedProduct,
     isProductLoading,
     isRefreshing,
     selectedGeography,
@@ -87,13 +90,46 @@ export function DashboardShell() {
             />
 
             {mapError ? <div className="floating-banner floating-banner-error" data-testid="map-error">{mapError}</div> : null}
-            {productError ? (
+            {productConfigurationMessage && thematicMode && seasonProfile ? (
+              <div className="floating-banner floating-banner-warning" data-testid="product-configuration-needed">
+                <div className="floating-banner-body">
+                  <div className="floating-banner-copy">
+                    <span className="floating-banner-kicker">Configuration needed</span>
+                    <div className="floating-banner-request" data-testid="product-request-metadata">
+                      <span className="floating-banner-request-label">Requested selection</span>
+                      <ProductRequestContext
+                        thematicMode={thematicMode}
+                        seasonProfile={seasonProfile}
+                        seasonalMetricMode={seasonalMetricMode}
+                        calendarSubseason={calendarSubseason}
+                      />
+                    </div>
+                    <p className="floating-banner-message">{productConfigurationMessage}</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {productError && requestedProduct ? (
               <div className="floating-banner floating-banner-warning" data-testid="product-error">
-                <div className="floating-banner-content">
-                  <p>{productError}</p>
-                  <button type="button" className="banner-button" onClick={retryProduct} disabled={isProductLoading || isRefreshing}>
-                    {isProductLoading || isRefreshing ? "Retrying..." : "Retry product"}
-                  </button>
+                <div className="floating-banner-body">
+                  <div className="floating-banner-copy" data-testid="product-error-copy">
+                    <span className="floating-banner-kicker">Published product unavailable</span>
+                    <div className="floating-banner-request" data-testid="product-request-metadata">
+                      <span className="floating-banner-request-label">Requested selection</span>
+                      <ProductRequestContext
+                        thematicMode={requestedProduct.theme}
+                        seasonProfile={requestedProduct.seasonProfile}
+                        seasonalMetricMode={requestedProduct.seasonalMetricMode}
+                        calendarSubseason={requestedProduct.calendarSubseason}
+                      />
+                    </div>
+                    <p className="floating-banner-message">{productError}</p>
+                  </div>
+                  <div className="floating-banner-actions" data-testid="product-error-actions">
+                    <button type="button" className="banner-button" onClick={retryProduct} disabled={isProductLoading || isRefreshing}>
+                      {isProductLoading || isRefreshing ? "Retrying..." : "Retry product"}
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -108,9 +144,12 @@ export function DashboardShell() {
           selectedArea={selectedArea}
           thematicMode={thematicMode}
           seasonProfile={seasonProfile}
+          seasonalMetricMode={seasonalMetricMode}
           calendarSubseason={calendarSubseason}
           mode={mode}
           productError={productError}
+          productConfigurationMessage={productConfigurationMessage}
+          requestedProduct={requestedProduct}
           isProductLoading={isProductLoading}
           isRetrying={isProductLoading || isRefreshing}
           onRetryProduct={retryProduct}

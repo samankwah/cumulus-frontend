@@ -1,120 +1,123 @@
-import type { CalendarSubseason, SeasonProfile, SeasonalMode, SeasonalTheme, SeasonalThemeOption } from "@/lib/types";
+import type {
+  CalendarSubseason,
+  ForecastArtifactTheme,
+  ForecastDeterministicSample,
+  ForecastProbabilitySample,
+  ForecastThemeOption,
+  ForecastViewMode,
+  SeasonProfile,
+} from "@/lib/types";
 
-export const SEASON_PROFILE_OPTIONS: Array<{ value: SeasonProfile; label: string }> = [
-  { value: "northern_single", label: "Northern Uni Modal Seasonal" },
-  { value: "southern_major", label: "Southern Major Season" },
-  { value: "southern_minor", label: "Southern Minor Season" },
+export const FORECAST_VIEW_MODE_OPTIONS: Array<{ value: ForecastViewMode; label: string }> = [
+  { value: "probabilistic", label: "Probability" },
+  { value: "deterministic", label: "Deterministic" },
 ];
 
-export const SEASONAL_MODE_OPTIONS: Array<{ value: SeasonalMode; label: string }> = [
-  { value: "seasonal", label: "Seasonal" },
-  { value: "calendar", label: "Calendar" },
-];
+export const DEFAULT_THEMATIC_OPTIONS: ForecastThemeOption[] = [
+  { value: "onset", label: "Onset Date", description: "Seasonal onset timing forecast across Ghana.", enabled: true, requiresSeason: true, requiresSubseason: false },
+  {
+    value: "early_dry_spell",
+    label: "Early-Season Dry Spell",
+    description: "Early-season dry-spell duration forecast across Ghana.",
+    enabled: true,
+    requiresSeason: true,
+    requiresSubseason: false,
+  },
+  {
+    value: "cessation",
+    label: "Cessation Date",
+    description: "Seasonal cessation timing forecast across Ghana.",
+    enabled: false,
+    requiresSeason: true,
+    requiresSubseason: false,
+  },
+  {
+    value: "late_dry_spell",
+    label: "Late-Season Dry Spell",
+    description: "Late-season dry-spell duration forecast across Ghana.",
+    enabled: false,
+    requiresSeason: true,
+    requiresSubseason: false,
+  },
+  {
+    value: "rainfall_amount",
+    label: "Seasonal Rainfall Total",
+    description: "Seasonal rainfall amount forecast across Ghana.",
+    enabled: false,
+    requiresSeason: false,
+    requiresSubseason: true,
+  },
+  {
+    value: "rainy_days",
+    label: "Number of Rainy Days",
+    description: "Seasonal rainy-day count forecast across Ghana.",
+    enabled: false,
+    requiresSeason: false,
+    requiresSubseason: true,
+  },
+].map((item) => ({
+  theme: item.value as ForecastArtifactTheme,
+  label: item.label,
+  title: item.description,
+  requires_season: item.requiresSeason,
+  requires_subseason: item.requiresSubseason,
+  enabled: item.enabled,
+  reason: item.enabled ? null : "artifacts_not_generated",
+  seasons: item.requiresSeason ? (["northern_single", "southern_major", "southern_minor"] as SeasonProfile[]) : [],
+  subseasons: item.requiresSubseason ? (["MAM", "AMJ", "MJJ", "JJA", "JAS", "SON"] as CalendarSubseason[]) : [],
+}));
 
-export const CALENDAR_SUBSEASON_OPTIONS: Record<SeasonProfile, CalendarSubseason[]> = {
-  northern_single: ["MJJ", "JJA", "JAS"],
-  southern_major: ["MAM", "AMJ", "MJJ"],
-  southern_minor: ["SON"],
+const SEASON_LABELS: Record<SeasonProfile, string> = {
+  northern_single: "Northern Single Season",
+  southern_major: "Southern Major Season",
+  southern_minor: "Southern Minor Season",
 };
 
-export const THEMATIC_OPTIONS: SeasonalThemeOption[] = [
-  { value: "onset", label: "Onset Date", description: "" },
-  { value: "cessation", label: "Cessation Date", description: "" },
-  { value: "early_dry_spell", label: "Early-Season Dry Spell", description: "" },
-  { value: "late_dry_spell", label: "Late-Season Dry Spell", description: "" },
-  { value: "rainfall_amount", label: "Seasonal Rainfall Total", description: "" },
-  { value: "rainy_days", label: "Number of Rainy Days", description: "" },
-];
-
-const DISPLAY_COPY_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/\bNorthern Single Season\b/g, "Northern Uni Modal Seasonal"],
-  [/\bSingle Season\b/g, "Northern Uni Modal Seasonal"],
-  [/\bEarly Dry Spell\b/g, "Early-Season Dry Spell"],
-  [/\bLate Dry Spell\b/g, "Late-Season Dry Spell"],
-  [/\bRainfall Amount\b/g, "Seasonal Rainfall Total"],
-  [/\bRainy Days\b/g, "Number of Rainy Days"],
-  [/\bOnset\b/g, "Onset Date"],
-  [/\bCessation\b/g, "Cessation Date"],
-];
-
-export function thematicTitle(theme: SeasonalTheme) {
-  return THEMATIC_OPTIONS.find((option) => option.value === theme)?.label ?? "Onset";
+export function thematicTitle(theme: ForecastArtifactTheme) {
+  return DEFAULT_THEMATIC_OPTIONS.find((option) => option.theme === theme)?.label ?? "Onset Date";
 }
 
-export function seasonProfileLabel(profile: SeasonProfile) {
-  return SEASON_PROFILE_OPTIONS.find((option) => option.value === profile)?.label ?? "Northern Uni Modal Seasonal";
+export function formatForecastThemeOptionLabel(option: ForecastThemeOption) {
+  return option.enabled ? option.label : `${option.label} (Not ready)`;
 }
 
-export function supportsCalendarMode(theme: SeasonalTheme | null) {
-  return theme === "rainfall_amount" || theme === "rainy_days";
-}
-
-export function requiresCalendarSubseason(theme: SeasonalTheme | null) {
-  return supportsCalendarMode(theme);
-}
-
-export function usesRegimeBoundFootprint(theme: SeasonalTheme) {
-  return theme === "onset" || theme === "cessation" || theme === "early_dry_spell" || theme === "late_dry_spell";
-}
-
-export function seasonalModeLabel(mode: SeasonalMode) {
-  return SEASONAL_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? "Seasonal";
-}
-
-export function calendarSubseasonOptions(profile: SeasonProfile | null) {
-  if (!profile) {
-    return [];
+export function forecastThemeAvailabilityReason(option: ForecastThemeOption | null) {
+  if (!option || option.enabled) {
+    return null;
   }
-  return CALENDAR_SUBSEASON_OPTIONS[profile];
+  if (option.reason === "artifacts_not_generated") {
+    return "Generated forecast artifacts for this variable are not available yet.";
+  }
+  return "This forecast variable is not ready yet.";
 }
 
-export function normalizeSeasonalCopy(text: string) {
-  return DISPLAY_COPY_REPLACEMENTS.reduce(
-    (value, [pattern, replacement]) => value.replace(pattern, replacement),
-    text,
-  );
+export function seasonProfileLabel(value: SeasonProfile) {
+  return SEASON_LABELS[value] ?? value;
 }
 
-export function seasonalThemeDescription(
-  theme: SeasonalTheme,
-  profile: SeasonProfile,
-  mode: SeasonalMode = "seasonal",
-  subseason: CalendarSubseason | null = null,
-) {
-  const profileLabel = seasonProfileLabel(profile);
+export function deterministicScaleLabels(theme: ForecastArtifactTheme) {
   if (theme === "onset") {
-    if (profile === "southern_minor") {
-      return `${profileLabel} onset date monitoring starts from 15 Aug using 20 mm in 3 consecutive days, with no dry spell longer than 10 days in the next 30 days. Map shading appears only inside the matching agro-ecological footprint.`;
-    }
-    const startDate = profile === "northern_single" ? "15 Mar" : "01 Feb";
-    return `${profileLabel} onset date monitoring starts from ${startDate} using at least 20 mm in up to 3 days, with no dry spell longer than 10 days in the next 30 days. Map shading appears only inside the matching agro-ecological footprint.`;
+    return { low: "Earlier timing", high: "Later timing" };
   }
   if (theme === "cessation") {
-    const startDate = profile === "southern_major" ? "01 Jul" : "01 Oct";
-    return `${profileLabel} cessation date monitoring starts from ${startDate} using soil water balance depletion from 70 mm with 4 mm/day evapotranspiration. Map shading appears only inside the matching agro-ecological footprint.`;
+    return { low: "Earlier timing", high: "Later timing" };
   }
-  if (theme === "early_dry_spell") {
-    return `${profileLabel} early-season dry spell is the longest dry run from onset date to day 50. Map shading appears only inside the matching agro-ecological footprint.`;
-  }
-  if (theme === "late_dry_spell") {
-    return `${profileLabel} late-season dry spell is the longest dry run from day 51 to cessation date. Map shading appears only inside the matching agro-ecological footprint.`;
+  if (theme === "early_dry_spell" || theme === "late_dry_spell") {
+    return { low: "Shorter duration", high: "Longer duration" };
   }
   if (theme === "rainfall_amount") {
-    if (!subseason) {
-      return `${profileLabel} rainfall totals are published only for calendar reporting windows. Select a sub-season to load this map.`;
-    }
-    if (mode === "calendar") {
-      return `${profileLabel} calendar rainfall total is accumulated only within the ${subseason} reporting window. Map shading remains nationwide even when this seasonal profile is selected.`;
-    }
-    return `${profileLabel} seasonal rainfall total is accumulated from detected onset date to detected cessation date under the selected Ghana seasonal regime. Map shading remains nationwide even when this seasonal profile is selected.`;
+    return { low: "Lower total", high: "Higher total" };
   }
-  if (!subseason) {
-    return `${profileLabel} rainy-day totals are published only for calendar reporting windows. Select a sub-season to load this map.`;
-  }
-  if (mode === "calendar" && subseason) {
-    return `${profileLabel} rainy days are counted only within the ${subseason} reporting window. Map shading remains nationwide even when this seasonal profile is selected.`;
-  }
-  return `${profileLabel} number of rainy days is counted from detected onset date to detected cessation date under the selected Ghana seasonal regime. Map shading remains nationwide even when this seasonal profile is selected.`;
+  return { low: "Fewer days", high: "More days" };
+}
+
+export function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function formatDate(value: string) {
@@ -132,11 +135,18 @@ export function formatShortDate(value: string) {
   });
 }
 
-export function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
+export function formatProbabilityPercentage(sample: ForecastProbabilitySample) {
+  return `${Math.round(sample.dominant_percentage)}%`;
+}
+
+export function formatDeterministicMetricDisplayValue(sample: ForecastDeterministicSample) {
+  return sample.display_value;
+}
+
+export function formatContinuousValue(value: number, unit: string) {
+  const formatter = new Intl.NumberFormat("en-GB", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
   });
+  return `${formatter.format(value)} ${unit}`;
 }

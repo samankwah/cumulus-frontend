@@ -5,7 +5,9 @@ import type {
   DistrictFeatureCollection,
   DistrictMetadata,
   RawDistrictFeatureCollection,
+  RegionFeature,
   RegionFeatureCollection,
+  RegionMetadata,
 } from "@/lib/types";
 
 type RawMapPayload = {
@@ -120,6 +122,7 @@ export async function loadMapData(): Promise<{
   regionFeatures: RegionFeatureCollection;
   districts: DistrictMetadata[];
   districtsByRegion: Record<string, DistrictMetadata[]>;
+  regions: RegionMetadata[];
 }> {
   const [rawDistricts, regions] = await Promise.all([
     loadJson<RawDistrictFeatureCollection>("/data/ghana_district_polygons_simplified.geojson"),
@@ -167,13 +170,38 @@ export async function loadMapData(): Promise<{
     return accumulator;
   }, {});
 
+  const enrichedRegions = regions.features.map((feature) => {
+    const point = representativePoint(feature.geometry);
+    const enrichedFeature: RegionFeature = {
+      ...feature,
+      properties: {
+        ...feature.properties,
+        latitude: point.latitude,
+        longitude: point.longitude,
+      },
+    };
+    return enrichedFeature;
+  });
+
+  const regionMetadata = enrichedRegions
+    .map((feature) => ({
+      name: feature.properties.region,
+      latitude: feature.properties.latitude,
+      longitude: feature.properties.longitude,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+
   return {
     districtFeatures: {
       type: "FeatureCollection",
       features: enrichedFeatures,
     },
-    regionFeatures: regions,
+    regionFeatures: {
+      type: "FeatureCollection",
+      features: enrichedRegions,
+    },
     districts,
     districtsByRegion,
+    regions: regionMetadata,
   };
 }

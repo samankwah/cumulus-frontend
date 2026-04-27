@@ -8,8 +8,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "start:server": "next start",
+    "start": "node ./scripts/start-production.mjs",
+    "start:server": "node ./scripts/start-production.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test",
     "smoke:headed": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test --headed",

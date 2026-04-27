@@ -22,10 +22,10 @@ if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE
 }
 
-$nextCli = Join-Path $frontendRoot "node_modules\\.bin\\next.cmd"
-if (-not (Test-Path $nextCli)) {
-  throw "Unable to locate Next.js CLI at $nextCli"
+$startScript = Join-Path $frontendRoot "scripts\\start-production.mjs"
+if (-not (Test-Path $startScript)) {
+  throw "Unable to locate production start script at $startScript"
 }
 
-& $nextCli "start" "--hostname" "0.0.0.0" "--port" "3000"
+node $startScript "--hostname" "0.0.0.0" "--port" "3000"
 exit $LASTEXITCODE

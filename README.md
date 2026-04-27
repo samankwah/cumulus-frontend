@@ -38,7 +38,7 @@ If you want repeatable local startup commands, use the PowerShell helpers from t
 For the development server:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-backend-local.ps1
+powershell -ExecutionPolicy Bypass -File .\backend\scripts\start-backend-local.ps1
 ```
 
 In a second terminal:
@@ -55,7 +55,7 @@ powershell -ExecutionPolicy Bypass -File .\frontend\start-frontend-production-lo
 
 These defaults point the frontend to `http://127.0.0.1:8000` and the backend to `data/sample_forecast_smoke.nc` unless you already set the relevant environment variables.
 
-Map polygons stay local in `frontend/public/data/*.geojson`. The frontend renders backend-generated seasonal classifications rather than raw forecast rasters. ERA5 and GFS remain backend source options under `data/raw`, and in-situ station data is used for training/calibration rather than as a direct map layer.
+Map polygons stay local in `frontend/public/data/*.geojson`. The frontend renders backend-generated seasonal classifications rather than raw forecast rasters. ERA5 and GFS remain backend source options under `ml/data/raw`, and in-situ station data is used for training/calibration rather than as a direct map layer.
 
 ## Build checks
 
@@ -90,7 +90,7 @@ The smoke harness sets `NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1` so the initial br
 
 ## Real API integration smoke
 
-The integration smoke test builds the Next.js app first, then starts the production server in the same workflow alongside the local FastAPI backend, points the frontend at `http://127.0.0.1:8000`, generates published seasonal products through `/seasonal-map/generate`, and drives the map UI through the real `/seasonal-map/active` endpoint. If no raw ERA5 or GFS manifest has been downloaded locally, the backend helper falls back to `data/sample_forecast_smoke.nc`.
+The integration smoke test builds the Next.js app first, then starts the production server in the same workflow alongside the local FastAPI backend, points the frontend at `http://127.0.0.1:8000`, generates published seasonal products through `/seasonal-map/generate`, and drives the map UI through the real `/seasonal-map/active` endpoint. If no raw ERA5 or GFS manifest has been downloaded locally, the backend helper falls back to `data/sample_forecast_smoke.nc` and the fixture copy step mirrors artifacts from `ml/data/artifacts`.
 
 Run the real integration harness:
 

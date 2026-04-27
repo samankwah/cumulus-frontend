@@ -2,116 +2,72 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { formatApiError, getActiveSeasonalMap } from "@/lib/api";
-import { calendarSubseasonOptions, requiresCalendarSubseason, supportsCalendarMode } from "@/lib/dashboard";
-import { loadMapData } from "@/lib/map-data";
+import {
+  formatApiError,
+  getActiveForecastDeterministicProduct,
+  getActiveForecastProbabilityProduct,
+  getForecastProductOptions,
+  sampleForecastDeterministic,
+  sampleForecastProbability,
+} from "@/lib/api";
+import { DEFAULT_THEMATIC_OPTIONS } from "@/lib/dashboard";
 import type {
   CalendarSubseason,
   DashboardMode,
-  DistrictFeature,
-  DistrictFeatureCollection,
-  DistrictMetadata,
-  RegionFeatureCollection,
+  ForecastArtifactTheme,
+  ForecastDeterministicSample,
+  ForecastGeographySelection,
+  ForecastMapProduct,
+  ForecastPointSelection,
+  ForecastProbabilitySample,
+  ForecastThemeOption,
+  ForecastViewMode,
+  RegionMetadata,
   SeasonProfile,
-  SeasonalMapAreaItem,
-  SeasonalProductRequest,
-  SeasonalMode,
-  SeasonalMapProduct,
-  SeasonalMapSelection,
-  SeasonalTheme,
 } from "@/lib/types";
 
 const DEFAULT_REFRESH_INTERVAL_SECONDS = 1800;
 
-function buildProductRequest(
-  theme: SeasonalTheme,
-  seasonProfile: SeasonProfile,
-  seasonalMetricMode: SeasonalMode,
-  calendarSubseason: CalendarSubseason | null,
-): SeasonalProductRequest {
-  return {
-    theme,
-    seasonProfile,
-    seasonalMetricMode,
-    calendarSubseason: seasonalMetricMode === "calendar" ? calendarSubseason : null,
-  };
-}
-
 export function useCumulusDashboard() {
-  const [mode, setMode] = useState<DashboardMode>("region");
-  const [thematicMode, setThematicMode] = useState<SeasonalTheme | null>(null);
+  const [dashboardMode, setDashboardMode] = useState<DashboardMode>("region");
+  const [viewMode, setViewMode] = useState<ForecastViewMode>("probabilistic");
+  const [thematicMode, setThematicMode] = useState<ForecastArtifactTheme | null>(null);
+  const [themeOptions, setThemeOptions] = useState<ForecastThemeOption[]>(DEFAULT_THEMATIC_OPTIONS);
   const [seasonProfile, setSeasonProfile] = useState<SeasonProfile | null>(null);
-  const [calendarSubseason, setCalendarSubseason] = useState<CalendarSubseason | null>(null);
-  const [districtFeatures, setDistrictFeatures] = useState<DistrictFeatureCollection | null>(null);
-  const [regionFeatures, setRegionFeatures] = useState<RegionFeatureCollection | null>(null);
-  const [districts, setDistricts] = useState<DistrictMetadata[]>([]);
-  const [districtsByRegion, setDistrictsByRegion] = useState<Record<string, DistrictMetadata[]>>({});
-  const [isBootstrapping, setIsBootstrapping] = useState(true);
-  const [mapError, setMapError] = useState<string | null>(null);
-  const [product, setProduct] = useState<SeasonalMapProduct | null>(null);
+  const [subseason, setSubseason] = useState<CalendarSubseason | null>(null);
+  const [product, setProduct] = useState<ForecastMapProduct | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
-  const [requestedProduct, setRequestedProduct] = useState<SeasonalProductRequest | null>(null);
   const [isProductLoading, setIsProductLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedGeography, setSelectedGeography] = useState<SeasonalMapSelection | null>(null);
+
+  const [selectedPoint, setSelectedPoint] = useState<ForecastPointSelection | null>(null);
+  const [selectedGeography, setSelectedGeography] = useState<ForecastGeographySelection | null>(null);
+  const [sample, setSample] = useState<ForecastProbabilitySample | ForecastDeterministicSample | null>(null);
+  const [sampleError, setSampleError] = useState<string | null>(null);
+  const [isSampleLoading, setIsSampleLoading] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
   const fetchIdRef = useRef(0);
-  const seasonalMetricMode: SeasonalMode = supportsCalendarMode(thematicMode) ? "calendar" : "seasonal";
-  const isCalendarSubseasonRequired = requiresCalendarSubseason(thematicMode);
-  const isCalendarSubseasonValid =
-    !seasonProfile || !calendarSubseason || calendarSubseasonOptions(seasonProfile).includes(calendarSubseason);
-  const isSubseasonSelectionMissing = Boolean(
-    thematicMode && seasonProfile && isCalendarSubseasonRequired && (!calendarSubseason || !isCalendarSubseasonValid),
+  const sampleIdRef = useRef(0);
+  const activeThemeOption = useMemo(
+    () =>
+      thematicMode
+        ? themeOptions.find((item) => item.theme === thematicMode) ?? DEFAULT_THEMATIC_OPTIONS.find((item) => item.theme === thematicMode) ?? null
+        : null,
+    [themeOptions, thematicMode],
   );
-  const productConfigurationMessage = isSubseasonSelectionMissing
-    ? "Select a sub-season to load the published calendar-based product for this seasonal regime."
-    : null;
 
-  useEffect(() => {
-    let ignore = false;
-
-    async function bootstrap() {
-      try {
-        const response = await loadMapData();
-        if (ignore) {
-          return;
-        }
-        setDistrictFeatures(response.districtFeatures);
-        setRegionFeatures(response.regionFeatures);
-        setDistricts(response.districts);
-        setDistrictsByRegion(response.districtsByRegion);
-        setMapError(null);
-      } catch (error) {
-        if (!ignore) {
-          setMapError(error instanceof Error ? error.message : "Failed to load Ghana map assets.");
-        }
-      } finally {
-        if (!ignore) {
-          setIsBootstrapping(false);
-        }
-      }
-    }
-
-    void bootstrap();
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  const fetchProduct = useCallback(
+  const loadProduct = useCallback(
     async (
-      nextTheme: SeasonalTheme,
-      nextSeasonProfile: SeasonProfile,
-      nextMetricMode: "seasonal" | "calendar",
-      nextSubseason: CalendarSubseason | null,
+      theme: ForecastArtifactTheme,
+      nextViewMode: ForecastViewMode,
+      selectedSeasonProfile: SeasonProfile | null,
+      selectedSubseason: CalendarSubseason | null,
       options?: { background?: boolean },
     ) => {
       const requestId = fetchIdRef.current + 1;
-      const request = buildProductRequest(nextTheme, nextSeasonProfile, nextMetricMode, nextSubseason);
       fetchIdRef.current = requestId;
-      setRequestedProduct(request);
       setProductError(null);
-
       if (options?.background) {
         setIsRefreshing(true);
       } else {
@@ -120,17 +76,14 @@ export function useCumulusDashboard() {
       }
 
       try {
-        const payload = await getActiveSeasonalMap(
-          request.theme,
-          request.seasonProfile,
-          request.seasonalMetricMode,
-          request.calendarSubseason,
-        );
+        const payload =
+          nextViewMode === "probabilistic"
+            ? await getActiveForecastProbabilityProduct(theme, selectedSeasonProfile, selectedSubseason)
+            : await getActiveForecastDeterministicProduct(theme, selectedSeasonProfile, selectedSubseason);
         if (fetchIdRef.current !== requestId) {
           return;
         }
         setProduct(payload);
-        setProductError(null);
       } catch (error) {
         if (fetchIdRef.current !== requestId) {
           return;
@@ -138,7 +91,7 @@ export function useCumulusDashboard() {
         if (!options?.background) {
           setProduct(null);
         }
-        setProductError(formatApiError(error));
+        setProductError(formatApiError(error, nextViewMode === "probabilistic" ? "probability" : "deterministic"));
       } finally {
         if (fetchIdRef.current === requestId) {
           setIsProductLoading(false);
@@ -150,194 +103,253 @@ export function useCumulusDashboard() {
   );
 
   useEffect(() => {
-    if (!thematicMode || !seasonProfile) {
-      setProduct(null);
-      setProductError(null);
-      setRequestedProduct(null);
-      setIsProductLoading(false);
-      setIsRefreshing(false);
-      return;
+    let ignore = false;
+    async function loadOptions() {
+      try {
+        const options = await getForecastProductOptions();
+        if (ignore || !options.length) {
+          return;
+        }
+        setThemeOptions(options);
+        setThematicMode((current) => {
+          const matching = current ? options.find((item) => item.theme === current && item.enabled) : null;
+          if (matching) {
+            return matching.theme;
+          }
+          return null;
+        });
+      } catch {
+        if (!ignore) {
+          setThemeOptions(DEFAULT_THEMATIC_OPTIONS);
+        }
+      }
     }
-
-    if (isSubseasonSelectionMissing) {
-      setProduct(null);
-      setProductError(null);
-      setRequestedProduct(null);
-      setIsProductLoading(false);
-      setIsRefreshing(false);
-      return;
-    }
-
-    void fetchProduct(thematicMode, seasonProfile, seasonalMetricMode, calendarSubseason);
-  }, [calendarSubseason, fetchProduct, isSubseasonSelectionMissing, seasonProfile, seasonalMetricMode, thematicMode]);
-
-  useEffect(() => {
-    if (!thematicMode || !seasonProfile || !product || isSubseasonSelectionMissing) {
-      return;
-    }
-
-    const intervalSeconds = product?.refresh_interval_seconds ?? DEFAULT_REFRESH_INTERVAL_SECONDS;
-    const handle = window.setInterval(() => {
-      void fetchProduct(thematicMode, seasonProfile, seasonalMetricMode, calendarSubseason, { background: true });
-    }, intervalSeconds * 1000);
+    void loadOptions();
     return () => {
-      window.clearInterval(handle);
+      ignore = true;
     };
-  }, [
-    calendarSubseason,
-    fetchProduct,
-    isSubseasonSelectionMissing,
-    product?.refresh_interval_seconds,
-    seasonProfile,
-    seasonalMetricMode,
-    thematicMode,
-  ]);
+  }, []);
 
   useEffect(() => {
-    if (!thematicMode || !supportsCalendarMode(thematicMode)) {
-      setCalendarSubseason(null);
-    }
-  }, [thematicMode]);
-
-  useEffect(() => {
-    if (!seasonProfile || !calendarSubseason) {
+    if (!activeThemeOption) {
+      setSeasonProfile(null);
+      setSubseason(null);
       return;
     }
-    const available = calendarSubseasonOptions(seasonProfile);
-    if (!available.includes(calendarSubseason)) {
-      setCalendarSubseason(null);
+    if (activeThemeOption.requires_season) {
+      setSeasonProfile((current) => {
+        return current && activeThemeOption.seasons.includes(current) ? current : null;
+      });
+    } else {
+      setSeasonProfile(null);
     }
-  }, [calendarSubseason, seasonProfile]);
 
-  const districtItemsById = useMemo(
-    () => Object.fromEntries((product?.district_items ?? []).map((item) => [item.location_id, item])),
-    [product?.district_items],
+    if (activeThemeOption.requires_subseason) {
+      setSubseason((current) => {
+        return current && activeThemeOption.subseasons.includes(current) ? current : null;
+      });
+    } else {
+      setSubseason(null);
+    }
+  }, [activeThemeOption]);
+
+  const loadSample = useCallback(
+    async (
+      theme: ForecastArtifactTheme,
+      nextViewMode: ForecastViewMode,
+      selectedSeasonProfile: SeasonProfile | null,
+      selectedSubseason: CalendarSubseason | null,
+      point: ForecastPointSelection,
+      options?: { keepDrawerOpen?: boolean },
+    ) => {
+      const requestId = sampleIdRef.current + 1;
+      sampleIdRef.current = requestId;
+      setSelectedPoint(point);
+      setSampleError(null);
+      setIsSampleLoading(true);
+      if (options?.keepDrawerOpen !== false) {
+        setIsDrawerOpen(true);
+      }
+
+      try {
+        const payload =
+          nextViewMode === "probabilistic"
+            ? await sampleForecastProbability(theme, point.latitude, point.longitude, selectedSeasonProfile, selectedSubseason)
+            : await sampleForecastDeterministic(theme, point.latitude, point.longitude, selectedSeasonProfile, selectedSubseason);
+        if (sampleIdRef.current !== requestId) {
+          return;
+        }
+        setSample(payload);
+      } catch (error) {
+        if (sampleIdRef.current !== requestId) {
+          return;
+        }
+        setSample(null);
+        setSampleError(formatApiError(error, nextViewMode === "probabilistic" ? "probability" : "deterministic"));
+      } finally {
+        if (sampleIdRef.current === requestId) {
+          setIsSampleLoading(false);
+        }
+      }
+    },
+    [],
   );
-  const regionItemsByName = useMemo(
-    () => Object.fromEntries((product?.region_items ?? []).map((item) => [item.geography_name, item])),
-    [product?.region_items],
+
+  const selectionReady = Boolean(
+    thematicMode &&
+      activeThemeOption &&
+      activeThemeOption.enabled &&
+      (!activeThemeOption.requires_season || seasonProfile) &&
+      (!activeThemeOption.requires_subseason || subseason),
   );
-  const selectedDistrictId = selectedGeography?.geographyType === "district" ? selectedGeography.geographyKey : null;
-  const selectedRegionName = selectedGeography?.geographyType === "region" ? selectedGeography.geographyKey : null;
 
-  const selectedDistrict = useMemo(() => {
-    if (!selectedDistrictId) {
-      return null;
+  useEffect(() => {
+    if (!thematicMode || !activeThemeOption) {
+      setProduct(null);
+      setProductError(null);
+      setIsProductLoading(false);
+      setIsRefreshing(false);
+      return;
     }
-    return districts.find((district) => district.locationId === selectedDistrictId) ?? null;
-  }, [districts, selectedDistrictId]);
-
-  const selectedArea = useMemo<SeasonalMapAreaItem | null>(() => {
-    if (!product || !selectedGeography) {
-      return null;
+    if (!selectionReady) {
+      setProduct(null);
+      setProductError(null);
+      return;
     }
-    return selectedGeography.geographyType === "district"
-      ? districtItemsById[selectedGeography.geographyKey] ?? null
-      : regionItemsByName[selectedGeography.geographyKey] ?? null;
-  }, [districtItemsById, product, regionItemsByName, selectedGeography]);
+    void loadProduct(thematicMode, viewMode, seasonProfile, subseason);
+  }, [activeThemeOption, loadProduct, seasonProfile, selectionReady, subseason, thematicMode, viewMode]);
 
-  function clearSelection() {
+  useEffect(() => {
+    const refreshIntervalSeconds = product?.refresh_interval_seconds ?? DEFAULT_REFRESH_INTERVAL_SECONDS;
+    const handle = window.setInterval(() => {
+      if (!selectionReady || !thematicMode) {
+        return;
+      }
+      void loadProduct(thematicMode, viewMode, seasonProfile, subseason, { background: true });
+    }, refreshIntervalSeconds * 1000);
+    return () => window.clearInterval(handle);
+  }, [loadProduct, product?.refresh_interval_seconds, seasonProfile, selectionReady, subseason, thematicMode, viewMode]);
+
+  useEffect(() => {
+    if (!selectedPoint || !selectionReady || !thematicMode) {
+      return;
+    }
+    void loadSample(thematicMode, viewMode, seasonProfile, subseason, selectedPoint, { keepDrawerOpen: isDrawerOpen });
+  }, [isDrawerOpen, loadSample, seasonProfile, selectionReady, selectedPoint, subseason, thematicMode, viewMode]); // intentionally refresh current point on theme/tab switch
+
+  useEffect(() => {
     setSelectedGeography(null);
+    setSelectedPoint(null);
+    setSample(null);
+    setSampleError(null);
+    setIsSampleLoading(false);
     setIsDrawerOpen(false);
-  }
-
-  function closeDrawer() {
-    setIsDrawerOpen(false);
-  }
-
-  function changeMode(nextMode: DashboardMode) {
-    if (nextMode === mode) {
-      return;
-    }
-    setMode(nextMode);
-    clearSelection();
-  }
-
-  function selectDistrict(feature: DistrictFeature) {
-    setSelectedGeography({
-      geographyType: "district",
-      geographyKey: feature.properties.location_id,
-      geographyName: feature.properties.display_name,
-      regionName: feature.properties.region,
-    });
-    setIsDrawerOpen(true);
-  }
-
-  function selectRegion(regionName: string) {
-    setSelectedGeography({
-      geographyType: "region",
-      geographyKey: regionName,
-      geographyName: regionName,
-      regionName,
-    });
-    setIsDrawerOpen(true);
-  }
-
-  function changeSeasonProfile(nextProfile: SeasonProfile | null) {
-    if (nextProfile === seasonProfile) {
-      return;
-    }
-    setSeasonProfile(nextProfile);
-  }
-
-  function changeThematicMode(nextTheme: SeasonalTheme | null) {
-    if (nextTheme === thematicMode) {
-      return;
-    }
-    setThematicMode(nextTheme);
-    if (!nextTheme || !supportsCalendarMode(nextTheme)) {
-      setCalendarSubseason(null);
-    }
-  }
-
-  function changeCalendarSubseason(nextSubseason: CalendarSubseason | null) {
-    if (nextSubseason === calendarSubseason) {
-      return;
-    }
-    setCalendarSubseason(nextSubseason);
-  }
+    sampleIdRef.current += 1;
+  }, [dashboardMode]);
 
   const retryProduct = useCallback(() => {
-    if (!thematicMode || !seasonProfile || isSubseasonSelectionMissing) {
+    if (!selectionReady || !thematicMode) {
       return;
     }
-    void fetchProduct(thematicMode, seasonProfile, seasonalMetricMode, calendarSubseason);
-  }, [calendarSubseason, fetchProduct, isSubseasonSelectionMissing, seasonProfile, seasonalMetricMode, thematicMode]);
+    void loadProduct(thematicMode, viewMode, seasonProfile, subseason);
+  }, [loadProduct, seasonProfile, selectionReady, subseason, thematicMode, viewMode]);
+
+  const retrySample = useCallback(() => {
+    if (!selectedPoint || !selectionReady || !thematicMode) {
+      return;
+    }
+    void loadSample(thematicMode, viewMode, seasonProfile, subseason, selectedPoint);
+  }, [loadSample, seasonProfile, selectionReady, selectedPoint, subseason, thematicMode, viewMode]);
+
+  const legend = useMemo(() => {
+    if (!product) {
+      return [];
+    }
+    if ("legend" in product) {
+      return product.legend;
+    }
+    return product.color_ramp;
+  }, [product]);
+
+  const currentSamplePoint = useMemo<ForecastPointSelection | null>(() => {
+    if (sample) {
+      return { latitude: sample.nearest_latitude, longitude: sample.nearest_longitude };
+    }
+    return selectedPoint;
+  }, [sample, selectedPoint]);
 
   return {
-    mode,
-    setMode: changeMode,
+    viewMode,
+    setViewMode,
+    dashboardMode,
+    setDashboardMode,
     thematicMode,
-    setThematicMode: changeThematicMode,
+    setThematicMode,
+    themeOptions,
+    activeThemeOption,
     seasonProfile,
-    setSeasonProfile: changeSeasonProfile,
-    seasonalMetricMode,
-    calendarSubseason,
-    setCalendarSubseason: changeCalendarSubseason,
-    districtFeatures,
-    regionFeatures,
-    districtsByRegion,
-    isBootstrapping,
-    mapError,
+    setSeasonProfile,
+    subseason,
+    setSubseason,
     product,
     productError,
-    productConfigurationMessage,
-    requestedProduct,
     isProductLoading,
     isRefreshing,
+    selectedPoint,
     selectedGeography,
+    currentSamplePoint,
+    sample,
+    sampleError,
+    isSampleLoading,
     isDrawerOpen,
-    selectedDistrict,
-    selectedDistrictId,
-    selectedRegionName,
-    selectedArea,
-    districtItemsById,
-    regionItemsByName,
-    thematicLegend: product?.legend ?? [],
+    legend,
+    setIsDrawerOpen,
+    closeDrawer: () => setIsDrawerOpen(false),
     retryProduct,
-    selectDistrict,
-    selectRegion,
-    closeDrawer,
-    clearSelection,
+    retrySample,
+    selectDistrict: (
+      geographyKey: string,
+      geographyName: string,
+      regionName: string,
+      latitude: number,
+      longitude: number,
+    ) => {
+      if (!selectionReady || !thematicMode) {
+        return;
+      }
+      setSelectedGeography({
+        mode: "district",
+        geographyKey,
+        geographyName,
+        regionName,
+        latitude,
+        longitude,
+      });
+      void loadSample(thematicMode, viewMode, seasonProfile, subseason, { latitude, longitude });
+    },
+    selectRegion: (region: RegionMetadata) => {
+      if (!selectionReady || !thematicMode) {
+        return;
+      }
+      setSelectedGeography({
+        mode: "region",
+        geographyKey: region.name,
+        geographyName: region.name,
+        regionName: region.name,
+        latitude: region.latitude,
+        longitude: region.longitude,
+      });
+      void loadSample(thematicMode, viewMode, seasonProfile, subseason, {
+        latitude: region.latitude,
+        longitude: region.longitude,
+      });
+    },
+    selectPoint: (latitude: number, longitude: number) => {
+      if (!selectionReady || !thematicMode) {
+        return;
+      }
+      setSelectedGeography(null);
+      void loadSample(thematicMode, viewMode, seasonProfile, subseason, { latitude, longitude });
+    },
   };
 }

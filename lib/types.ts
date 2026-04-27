@@ -66,6 +66,8 @@ export type RegionFeatureProperties = {
   region: string;
   api_district: null;
   level: "region";
+  latitude: number;
+  longitude: number;
 };
 
 export type RawDistrictFeature = Feature<Geometry, RawDistrictFeatureProperties>;
@@ -84,7 +86,14 @@ export type DistrictMetadata = {
   longitude: number;
 };
 
+export type RegionMetadata = {
+  name: string;
+  latitude: number;
+  longitude: number;
+};
+
 export type DashboardMode = "district" | "region";
+export type ForecastViewMode = "probabilistic" | "deterministic";
 export type ThematicMode = "rainfall" | "planting" | "dry_spell" | "irrigation";
 export type ThematicBucket = "low" | "mid" | "high" | "missing";
 export type AdvisorySeverityBucket = "low" | "moderate" | "high" | "missing";
@@ -92,6 +101,7 @@ export type SelectionState = "idle" | "loading" | "selected" | "error";
 export type SeasonProfile = "northern_single" | "southern_major" | "southern_minor";
 export type SeasonalMode = "seasonal" | "calendar";
 export type CalendarSubseason = "MAM" | "AMJ" | "MJJ" | "JJA" | "JAS" | "SON";
+export type DeterministicRasterVariable = "rainfall_daily_mm" | "temperature_c";
 export type SeasonalTheme =
   | "onset"
   | "cessation"
@@ -177,30 +187,68 @@ export type SeasonalLegendItem = {
   label: string;
   hint: string;
   color: string;
+  family_label: string;
+  display_order: number;
+  reverse_probability_scale: boolean;
 };
 
-export type SeasonalThemeMetric = {
+export type SeasonalProbabilityCategory = {
+  category_code: string;
+  label: string;
+  hint: string;
+  color: string;
+  percentage: number;
+};
+
+export type SeasonalProbabilityMetric = {
   theme: SeasonalTheme;
   theme_label: string;
   category_code: string;
   category_label: string;
-  numeric_value: number | null;
+  dominant_category_code: string;
+  dominant_category_label: string;
+  dominant_percentage: number;
   display_value: string;
   unit: string | null;
   criteria_note: string;
   interpretation: string;
   color: string;
+  category_probabilities: SeasonalProbabilityCategory[];
 };
 
-export type SeasonalMapAreaItem = {
+export type SeasonalDeterministicMetric = {
+  theme: SeasonalTheme;
+  theme_label: string;
+  value: number | null;
+  display_value: string;
+  unit: string | null;
+  criteria_note: string;
+  interpretation: string;
+  legend_label: string;
+  color: string;
+};
+
+export type SeasonalProbabilityMapAreaItem = {
   location_id: string;
   geography_type: "district" | "region";
   geography_name: string;
   region_name: string;
   coverage_count: number;
   coverage_note: string;
-  metric: SeasonalThemeMetric;
+  metric: SeasonalProbabilityMetric;
 };
+
+export type SeasonalDeterministicMapAreaItem = {
+  location_id: string;
+  geography_type: "district" | "region";
+  geography_name: string;
+  region_name: string;
+  coverage_count: number;
+  coverage_note: string;
+  metric: SeasonalDeterministicMetric;
+};
+
+export type SeasonalMapAreaItem = SeasonalProbabilityMapAreaItem | SeasonalDeterministicMapAreaItem;
 
 export type SeasonalMapSelection = {
   geographyType: "district" | "region";
@@ -211,12 +259,12 @@ export type SeasonalMapSelection = {
 
 export type SeasonalProductRequest = {
   theme: SeasonalTheme;
-  seasonProfile: SeasonProfile;
+  seasonProfile: SeasonProfile | null;
   seasonalMetricMode: SeasonalMode;
   calendarSubseason: CalendarSubseason | null;
 };
 
-export type SeasonalMapProduct = {
+export type SeasonalProbabilityMapProduct = {
   product_id: string;
   theme: SeasonalTheme;
   season_profile: SeasonProfile;
@@ -236,6 +284,260 @@ export type SeasonalMapProduct = {
   refresh_status: "fresh" | "stale";
   is_stale: boolean;
   legend: SeasonalLegendItem[];
-  district_items: SeasonalMapAreaItem[];
-  region_items: SeasonalMapAreaItem[];
+  district_items: SeasonalProbabilityMapAreaItem[];
+  region_items: SeasonalProbabilityMapAreaItem[];
+};
+
+export type SeasonalDeterministicMapProduct = {
+  product_id: string;
+  theme: SeasonalTheme;
+  season_profile: SeasonProfile;
+  mode: SeasonalMode;
+  subseason: CalendarSubseason | null;
+  mode_label: string;
+  subseason_label: CalendarSubseason | null;
+  generated_at: string;
+  forecast_cycle: string;
+  forecast_source: string;
+  forecast_source_label: string;
+  source_run_id: string;
+  refresh_interval_seconds: number;
+  freshness_threshold_hours: number;
+  district_count: number;
+  region_count: number;
+  refresh_status: "fresh" | "stale";
+  is_stale: boolean;
+  legend: SeasonalLegendItem[];
+  district_items: SeasonalDeterministicMapAreaItem[];
+  region_items: SeasonalDeterministicMapAreaItem[];
+};
+
+export type SeasonalMapProduct = SeasonalProbabilityMapProduct | SeasonalDeterministicMapProduct;
+
+export type ForecastRasterLegendStop = {
+  offset: number;
+  color: string;
+};
+
+export type ForecastRasterBounds = {
+  latitude_min: number;
+  latitude_max: number;
+  longitude_min: number;
+  longitude_max: number;
+};
+
+export type ForecastRasterGrid = {
+  latitudes: number[];
+  longitudes: number[];
+  values: Array<Array<number | null>>;
+};
+
+export type ForecastRasterMetadata = {
+  layer_id: string;
+  tile_url: string;
+  variable: DeterministicRasterVariable;
+  variable_label: string;
+  unit: string;
+  horizon_day: number;
+  valid_time: string;
+  generated_at: string;
+  forecast_source: string;
+  forecast_source_label: string;
+  source_run_id: string;
+  data_origin: string | null;
+  lower_bound: number;
+  upper_bound: number;
+  available_horizon_days: number[];
+  legend_ticks: number[];
+  color_ramp: ForecastRasterLegendStop[];
+  bounds: ForecastRasterBounds;
+  grid: ForecastRasterGrid;
+};
+
+export type ForecastRasterSelectionPoint = {
+  latitude: number;
+  longitude: number;
+};
+
+export type ForecastRasterSample = {
+  latitude: number;
+  longitude: number;
+  nearest_latitude: number | null;
+  nearest_longitude: number | null;
+  value: number | null;
+  unit: string;
+  variable: DeterministicRasterVariable;
+  variable_label: string;
+  horizon_day: number;
+  valid_time: string;
+  forecast_source: string;
+  forecast_source_label: string;
+  source_run_id: string;
+  data_origin: string | null;
+};
+
+export type ForecastArtifactTheme =
+  | "onset"
+  | "early_dry_spell"
+  | "cessation"
+  | "late_dry_spell"
+  | "rainfall_amount"
+  | "rainy_days";
+
+export type ForecastProductBounds = {
+  latitude_min: number;
+  latitude_max: number;
+  longitude_min: number;
+  longitude_max: number;
+};
+
+export type ForecastProductLegendItem = {
+  category_code: string;
+  label: string;
+  hint: string;
+  color: string;
+  display_order: number;
+};
+
+export type ForecastProductColorRampStop = {
+  offset: number;
+  color: string;
+};
+
+export type ForecastProbabilityMapProduct = {
+  product_id: string;
+  theme: ForecastArtifactTheme;
+  theme_label: string;
+  season_profile: SeasonProfile | null;
+  season_label: string | null;
+  subseason: CalendarSubseason | null;
+  subseason_label: string | null;
+  forecast_year: number;
+  valid_time: string;
+  generated_at: string;
+  forecast_source: string;
+  forecast_source_label: string;
+  source_run_id: string;
+  generation_backend: string;
+  refresh_interval_seconds: number;
+  freshness_threshold_hours: number;
+  tile_url: string;
+  preview_url: string | null;
+  bounds: ForecastProductBounds;
+  legend: ForecastProductLegendItem[];
+};
+
+export type ForecastDeterministicMapProduct = {
+  product_id: string;
+  theme: ForecastArtifactTheme;
+  theme_label: string;
+  season_profile: SeasonProfile | null;
+  season_label: string | null;
+  subseason: CalendarSubseason | null;
+  subseason_label: string | null;
+  forecast_year: number;
+  valid_time: string;
+  generated_at: string;
+  forecast_source: string;
+  forecast_source_label: string;
+  source_run_id: string;
+  generation_backend: string;
+  refresh_interval_seconds: number;
+  freshness_threshold_hours: number;
+  tile_url: string;
+  preview_url: string | null;
+  bounds: ForecastProductBounds;
+  unit: string;
+  lower_bound: number;
+  upper_bound: number;
+  legend_ticks: number[];
+  color_ramp: ForecastProductColorRampStop[];
+};
+
+export type ForecastMapProduct = ForecastProbabilityMapProduct | ForecastDeterministicMapProduct;
+
+export type ForecastProbabilitySampleCategory = {
+  category_code: string;
+  label: string;
+  hint: string;
+  color: string;
+  percentage: number;
+};
+
+export type ForecastProbabilitySample = {
+  theme: ForecastArtifactTheme;
+  theme_label: string;
+  season_profile: SeasonProfile | null;
+  season_label: string | null;
+  subseason: CalendarSubseason | null;
+  subseason_label: string | null;
+  latitude: number;
+  longitude: number;
+  nearest_latitude: number;
+  nearest_longitude: number;
+  dominant_category_code: string;
+  dominant_category_label: string;
+  dominant_percentage: number;
+  display_value: string;
+  interpretation: string;
+  criteria_note: string;
+  category_probabilities: ForecastProbabilitySampleCategory[];
+  valid_time: string;
+  forecast_year: number;
+  forecast_source: string;
+  forecast_source_label: string;
+  source_run_id: string;
+  generation_backend: string;
+};
+
+export type ForecastDeterministicSample = {
+  theme: ForecastArtifactTheme;
+  theme_label: string;
+  season_profile: SeasonProfile | null;
+  season_label: string | null;
+  subseason: CalendarSubseason | null;
+  subseason_label: string | null;
+  latitude: number;
+  longitude: number;
+  nearest_latitude: number;
+  nearest_longitude: number;
+  value: number;
+  display_value: string;
+  unit: string;
+  interpretation: string;
+  criteria_note: string;
+  valid_time: string;
+  forecast_year: number;
+  forecast_source: string;
+  forecast_source_label: string;
+  source_run_id: string;
+  generation_backend: string;
+};
+
+export type ForecastPointSelection = {
+  latitude: number;
+  longitude: number;
+};
+
+export type ForecastGeographySelection = {
+  mode: DashboardMode;
+  geographyKey: string;
+  geographyName: string;
+  regionName: string;
+  latitude: number;
+  longitude: number;
+};
+
+export type ForecastSample = ForecastProbabilitySample | ForecastDeterministicSample;
+
+export type ForecastThemeOption = {
+  theme: ForecastArtifactTheme;
+  label: string;
+  title: string;
+  requires_season: boolean;
+  requires_subseason: boolean;
+  enabled: boolean;
+  reason: string | null;
+  seasons: SeasonProfile[];
+  subseasons: CalendarSubseason[];
 };

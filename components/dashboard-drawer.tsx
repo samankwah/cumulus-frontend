@@ -1,101 +1,90 @@
 "use client";
 
-import { ProductRequestContext } from "@/components/product-request-context";
-import {
-  formatDateTime,
-  seasonProfileLabel,
-  thematicTitle,
-} from "@/lib/dashboard";
+import { formatDateTime, formatDeterministicMetricDisplayValue, formatProbabilityPercentage } from "@/lib/dashboard";
 import type {
   CalendarSubseason,
   DashboardMode,
+  ForecastArtifactTheme,
+  ForecastDeterministicMapProduct,
+  ForecastDeterministicSample,
+  ForecastGeographySelection,
+  ForecastMapProduct,
+  ForecastProbabilityMapProduct,
+  ForecastProbabilitySample,
+  ForecastViewMode,
   SeasonProfile,
-  SeasonalMapAreaItem,
-  SeasonalMapProduct,
-  SeasonalMapSelection,
-  SeasonalProductRequest,
-  SeasonalTheme,
 } from "@/lib/types";
 
-function titleForSelection(mode: DashboardMode, selection: SeasonalMapSelection | null) {
-  if (!selection) {
-    return mode === "region" ? "Select a region" : "Select a district";
-  }
-  return selection.geographyName;
+function isProbabilityProduct(product: ForecastMapProduct | null): product is ForecastProbabilityMapProduct {
+  return Boolean(product && "legend" in product);
 }
 
-function selectionDescription(selection: SeasonalMapSelection | null, selectedArea: SeasonalMapAreaItem | null) {
-  if (selectedArea) {
-    return `${selectedArea.region_name}${selectedArea.geography_type === "district" ? " Region" : ""}`;
-  }
+function isDeterministicProduct(product: ForecastMapProduct | null): product is ForecastDeterministicMapProduct {
+  return Boolean(product && "color_ramp" in product);
+}
 
-  if (!selection) {
-    return "";
-  }
+function isProbabilitySample(sample: ForecastProbabilitySample | ForecastDeterministicSample | null): sample is ForecastProbabilitySample {
+  return Boolean(sample && "category_probabilities" in sample);
+}
 
-  return `${selection.regionName}${selection.geographyType === "district" ? " Region" : ""}`;
+function selectionModeLabel(value: DashboardMode) {
+  return value === "district" ? "District" : "Region";
 }
 
 export function DashboardDrawer({
+  dashboardMode,
+  viewMode,
   isOpen,
   onClose,
-  product,
-  selection,
-  selectedArea,
   thematicMode,
   seasonProfile,
-  seasonalMetricMode,
-  calendarSubseason,
-  mode,
+  subseason,
+  selectedGeography,
+  product,
+  sample,
   productError,
-  productConfigurationMessage,
-  requestedProduct,
+  sampleError,
   isProductLoading,
-  isRetrying,
+  isSampleLoading,
   onRetryProduct,
+  onRetrySample,
 }: {
+  dashboardMode: DashboardMode;
+  viewMode: ForecastViewMode;
   isOpen: boolean;
   onClose: () => void;
-  product: SeasonalMapProduct | null;
-  selection: SeasonalMapSelection | null;
-  selectedArea: SeasonalMapAreaItem | null;
-  thematicMode: SeasonalTheme | null;
+  thematicMode: ForecastArtifactTheme | null;
   seasonProfile: SeasonProfile | null;
-  seasonalMetricMode: "seasonal" | "calendar";
-  calendarSubseason: CalendarSubseason | null;
-  mode: DashboardMode;
+  subseason: CalendarSubseason | null;
+  selectedGeography: ForecastGeographySelection | null;
+  product: ForecastMapProduct | null;
+  sample: ForecastProbabilitySample | ForecastDeterministicSample | null;
   productError: string | null;
-  productConfigurationMessage: string | null;
-  requestedProduct: SeasonalProductRequest | null;
+  sampleError: string | null;
   isProductLoading: boolean;
-  isRetrying: boolean;
+  isSampleLoading: boolean;
   onRetryProduct: () => void;
+  onRetrySample: () => void;
 }) {
-  const selectedMetric = selectedArea?.metric ?? null;
-  const requestContext =
-    requestedProduct ??
-    (thematicMode && seasonProfile
-      ? {
-          theme: thematicMode,
-          seasonProfile,
-          seasonalMetricMode,
-          calendarSubseason: seasonalMetricMode === "calendar" ? calendarSubseason : null,
-        }
-      : null);
-  const isConfigurationMissing = Boolean(selection) && (!thematicMode || !seasonProfile || productConfigurationMessage);
-  const isSelectionLoading = Boolean(selection) && !isConfigurationMissing && isProductLoading && !selectedArea;
-  const hasResolvedData = Boolean(selection && thematicMode && seasonProfile && selectedArea && selectedMetric && product);
-  const isUnavailable = Boolean(selection) && !isConfigurationMissing && !isSelectionLoading && !hasResolvedData;
-  const unavailableMessage =
-    productError ?? "No published seasonal product exists for the current request. That combination has not been generated or published yet.";
+  const geographyLabel = dashboardMode === "district" ? "district" : "region";
 
   return (
     <aside data-testid="dashboard-drawer" className={isOpen ? "drawer open" : "drawer"}>
       <div className="drawer-header">
         <div>
-          <span className="section-kicker">{mode === "region" ? "Regional summary" : "District summary"}</span>
-          <h2>{titleForSelection(mode, selection)}</h2>
-          {selectionDescription(selection, selectedArea) ? <p>{selectionDescription(selection, selectedArea)}</p> : null}
+          <span className="section-kicker">
+            {viewMode === "probabilistic" ? "Probability forecast selection" : "Deterministic forecast selection"}
+          </span>
+          <h2>{product?.theme_label ?? thematicMode ?? "Forecast selection"}</h2>
+          {sample ? (
+            <p>
+              {selectedGeography
+                ? `${selectedGeography.geographyName} sampled at ${sample.nearest_latitude.toFixed(2)} deg, ${sample.nearest_longitude.toFixed(2)} deg`
+                : `${sample.nearest_latitude.toFixed(2)} deg, ${sample.nearest_longitude.toFixed(2)} deg`}
+            </p>
+          ) : (
+            <p>{`Click a ${geographyLabel} on the map to inspect the nearest forecast grid cell.`}</p>
+          )}
         </div>
         <button
           type="button"
@@ -110,138 +99,310 @@ export function DashboardDrawer({
         </button>
       </div>
 
-      {!selection ? (
+      {!sample && !sampleError ? (
         <div className="drawer-empty">
-          <p>No selection yet</p>
-          <span>The selected variable, seasonal regime, and published product details will appear here after a map click.</span>
+          <p>No sampled {geographyLabel} yet</p>
+          <span>{`The nearest grid-cell summary, criteria note, and source metadata will appear here after you choose a ${geographyLabel}.`}</span>
         </div>
       ) : null}
 
-      {selection && isConfigurationMissing ? (
+      {sampleError ? (
         <div className="drawer-scroll">
           <section className="drawer-section">
             <div className="section-heading">
               <div>
-                <span className="section-kicker">Selection pending configuration</span>
-                <h3>Variables and Season</h3>
+                <span className="section-kicker">Sample unavailable</span>
+                <h3>Point lookup failed</h3>
               </div>
             </div>
-            <article className="empty-card">
-              <p>{selection.geographyName} is highlighted.</p>
-              <span>
-                {!thematicMode || !seasonProfile
-                  ? "Choose both a variable and a season to load the published seasonal classification for this geography."
-                  : productConfigurationMessage ?? "Choose a sub-season to load the calendar-based seasonal classification for this geography."}
-              </span>
-            </article>
-          </section>
-        </div>
-      ) : null}
-
-      {selection && isSelectionLoading ? (
-        <div className="drawer-scroll">
-          <section className="drawer-section">
-            <div className="section-heading">
-              <div>
-                <span className="section-kicker">Loading selected geography</span>
-                <h3>Fetching seasonal map data</h3>
-              </div>
-            </div>
-            {requestContext ? (
-              <ProductRequestContext
-                thematicMode={requestContext.theme}
-                seasonProfile={requestContext.seasonProfile}
-                seasonalMetricMode={requestContext.seasonalMetricMode}
-                calendarSubseason={requestContext.calendarSubseason}
-                geographyTypeLabel={selection.geographyType === "region" ? "Region" : "District"}
-              />
-            ) : null}
-            <article className="empty-card">
-              <p>Loading thematic data</p>
-              <span>We are fetching the active Ghana seasonal advisory map for this geography and seasonal regime.</span>
-            </article>
-          </section>
-        </div>
-      ) : null}
-
-      {selection && isUnavailable ? (
-        <div className="drawer-scroll">
-          <section className="drawer-section">
-            <div className="section-heading">
-              <div>
-                <span className="section-kicker">Thematic data unavailable</span>
-                <h3>Published product not available</h3>
-              </div>
-            </div>
-            {requestContext ? (
-              <ProductRequestContext
-                thematicMode={requestContext.theme}
-                seasonProfile={requestContext.seasonProfile}
-                seasonalMetricMode={requestContext.seasonalMetricMode}
-                calendarSubseason={requestContext.calendarSubseason}
-                geographyTypeLabel={selection.geographyType === "region" ? "Region" : "District"}
-              />
-            ) : null}
             <article className="empty-card drawer-error" data-testid="selection-unavailable">
-              <span className="card-eyebrow">Published product unavailable</span>
-              <p>{unavailableMessage}</p>
-              <span>{selection.geographyName} remains highlighted so you can retry without losing map context.</span>
+              <p>{sampleError}</p>
+              <span>The active map can stay in place while you retry the point sample.</span>
             </article>
             <div className="drawer-actions">
-              <button type="button" className="ghost-button" onClick={onRetryProduct} disabled={isRetrying}>
-                {isRetrying ? "Retrying..." : "Retry seasonal product"}
+              <button type="button" className="ghost-button" onClick={onRetrySample} disabled={isSampleLoading}>
+                {isSampleLoading ? "Retrying..." : "Retry sample"}
               </button>
             </div>
           </section>
         </div>
       ) : null}
 
-      {selection && thematicMode && seasonProfile && hasResolvedData && selectedArea && selectedMetric && product ? (
+      {isSampleLoading && !sample ? (
         <div className="drawer-scroll">
           <section className="drawer-section">
             <div className="section-heading">
               <div>
-                <span className="section-kicker">Selected variable</span>
-                <h3>{thematicTitle(thematicMode)}</h3>
+                <span className="section-kicker">Loading forecast cell</span>
+                <h3>Sampling nearest grid point</h3>
               </div>
-              <p>
-                {seasonProfileLabel(seasonProfile)}
-                {calendarSubseason ? `, ${calendarSubseason}` : ""}
-              </p>
             </div>
-            {requestContext ? (
-              <ProductRequestContext
-                thematicMode={requestContext.theme}
-                seasonProfile={requestContext.seasonProfile}
-                seasonalMetricMode={requestContext.seasonalMetricMode}
-                calendarSubseason={requestContext.calendarSubseason}
-                geographyTypeLabel={selection.geographyType === "region" ? "Region" : "District"}
-              />
-            ) : null}
+            <article className="empty-card">
+              <p>Fetching sampled forecast data</p>
+              <span>
+                {viewMode === "probabilistic"
+                  ? "The probability breakdown for the chosen area is loading."
+                  : "The deterministic value for the chosen area is loading."}
+              </span>
+            </article>
+          </section>
+        </div>
+      ) : null}
+
+      {sample && isProbabilitySample(sample) && product && isProbabilityProduct(product) ? (
+        <div className="drawer-scroll">
+          <section className="drawer-section">
+            <div className="section-heading">
+              <div>
+                <span className="section-kicker">Probability overview</span>
+                <h3>{sample.theme_label}</h3>
+              </div>
+            </div>
             <article className="advisory-card" data-testid="selection-summary">
               <div className="card-header">
-                <span className="card-eyebrow">{thematicTitle(selectedMetric.theme)}</span>
-                <span className="status-dot" style={{ backgroundColor: selectedMetric.color, color: "#fffdf7" }}>
-                  {selectedMetric.category_label}
-                </span>
+                <span className="card-eyebrow">{sample.theme_label}</span>
+                <span className="status-dot">{formatProbabilityPercentage(sample)}</span>
               </div>
-              <h4>{selectedMetric.display_value}</h4>
+              <h4>{sample.dominant_category_label}</h4>
+              <p>{sample.interpretation}</p>
             </article>
           </section>
 
           <section className="drawer-section">
             <div className="section-heading">
               <div>
-                <span className="section-kicker">Freshness</span>
-                <h3>Published product metadata</h3>
+                <span className="section-kicker">Category breakdown</span>
+                <h3>Nearest cell percentages</h3>
               </div>
             </div>
-            <div className="detail-grid">
-              <span className="meta-pill">Last updated: {formatDateTime(product.generated_at)}</span>
-              <span className="meta-pill">Forecast cycle: {product.forecast_cycle}</span>
-              <span className="meta-pill">Source: {product.forecast_source_label}</span>
-              <span className="meta-pill">Run: {product.source_run_id}</span>
-              <span className="meta-pill">Status: {product.is_stale ? "Stale" : "Current"}</span>
+            <div className="metadata-panel metadata-panel-secondary">
+              <dl className="metadata-grid">
+                {sample.category_probabilities.map((item) => (
+                  <div key={item.category_code} className="metadata-row">
+                    <dt>{item.label}</dt>
+                    <dd>{Math.round(item.percentage)}%</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </section>
+
+          <section className="drawer-section">
+            <div className="section-heading">
+              <div>
+                <span className="section-kicker">Supporting context</span>
+                <h3>Product metadata</h3>
+              </div>
+            </div>
+            <dl className="metadata-grid" data-testid="drawer-metadata-grid">
+              <div className="metadata-row">
+                <dt>Variable</dt>
+                <dd>{sample.theme_label}</dd>
+              </div>
+              {seasonProfile ? (
+                <div className="metadata-row">
+                  <dt>Season</dt>
+                  <dd>{sample.season_label ?? product?.season_label ?? seasonProfile}</dd>
+                </div>
+              ) : null}
+              {subseason ? (
+                <div className="metadata-row">
+                  <dt>Sub-season</dt>
+                  <dd>{sample.subseason_label ?? product?.subseason_label ?? subseason}</dd>
+                </div>
+              ) : null}
+              <div className="metadata-row">
+                <dt>Forecast tab</dt>
+                <dd>{viewMode === "probabilistic" ? "Probability" : "Deterministic"}</dd>
+              </div>
+              {selectedGeography ? (
+                <>
+                  <div className="metadata-row">
+                    <dt>Selection mode</dt>
+                    <dd>{selectionModeLabel(selectedGeography.mode)}</dd>
+                  </div>
+                  <div className="metadata-row">
+                    <dt>Selected geography</dt>
+                    <dd>{selectedGeography.geographyName}</dd>
+                  </div>
+                  <div className="metadata-row">
+                    <dt>Representative point</dt>
+                    <dd>{`${selectedGeography.latitude.toFixed(3)}, ${selectedGeography.longitude.toFixed(3)}`}</dd>
+                  </div>
+                </>
+              ) : null}
+              <div className="metadata-row">
+                <dt>Dominant category</dt>
+                <dd>{sample.dominant_category_label}</dd>
+              </div>
+              <div className="metadata-row">
+                <dt>Cell latitude</dt>
+                <dd>{sample.nearest_latitude.toFixed(3)}</dd>
+              </div>
+              <div className="metadata-row">
+                <dt>Cell longitude</dt>
+                <dd>{sample.nearest_longitude.toFixed(3)}</dd>
+              </div>
+              <div className="metadata-row metadata-row-wide">
+                <dt>Criteria</dt>
+                <dd>{sample.criteria_note}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="drawer-section">
+            <div className="section-heading">
+              <div>
+                <span className="section-kicker">Freshness</span>
+                <h3>Published product</h3>
+              </div>
+            </div>
+            <div className="metadata-panel metadata-panel-secondary" data-testid="drawer-publication-grid">
+              <dl className="metadata-grid">
+                <div className="metadata-row">
+                  <dt>Last updated</dt>
+                  <dd>{formatDateTime(product.generated_at)}</dd>
+                </div>
+                <div className="metadata-row">
+                  <dt>Source</dt>
+                  <dd>{product.forecast_source_label}</dd>
+                </div>
+                <div className="metadata-row">
+                  <dt>Run</dt>
+                  <dd>{product.source_run_id}</dd>
+                </div>
+              </dl>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {sample && !isProbabilitySample(sample) && product && isDeterministicProduct(product) ? (
+        <div className="drawer-scroll">
+          <section className="drawer-section">
+            <div className="section-heading">
+              <div>
+                <span className="section-kicker">Deterministic overview</span>
+                <h3>{sample.theme_label}</h3>
+              </div>
+            </div>
+            <article className="advisory-card" data-testid="selection-summary">
+              <div className="card-header">
+                <span className="card-eyebrow">{sample.theme_label}</span>
+                <span className="status-dot">{sample.unit}</span>
+              </div>
+              <h4>{formatDeterministicMetricDisplayValue(sample)}</h4>
+              <p>{sample.interpretation}</p>
+            </article>
+          </section>
+
+          <section className="drawer-section">
+            <div className="section-heading">
+              <div>
+                <span className="section-kicker">Supporting context</span>
+                <h3>Product metadata</h3>
+              </div>
+            </div>
+            <dl className="metadata-grid" data-testid="drawer-metadata-grid">
+              <div className="metadata-row">
+                <dt>Variable</dt>
+                <dd>{sample.theme_label}</dd>
+              </div>
+              {seasonProfile ? (
+                <div className="metadata-row">
+                  <dt>Season</dt>
+                  <dd>{sample.season_label ?? product?.season_label ?? seasonProfile}</dd>
+                </div>
+              ) : null}
+              {subseason ? (
+                <div className="metadata-row">
+                  <dt>Sub-season</dt>
+                  <dd>{sample.subseason_label ?? product?.subseason_label ?? subseason}</dd>
+                </div>
+              ) : null}
+              <div className="metadata-row">
+                <dt>Forecast tab</dt>
+                <dd>{viewMode === "probabilistic" ? "Probability" : "Deterministic"}</dd>
+              </div>
+              {selectedGeography ? (
+                <>
+                  <div className="metadata-row">
+                    <dt>Selection mode</dt>
+                    <dd>{selectionModeLabel(selectedGeography.mode)}</dd>
+                  </div>
+                  <div className="metadata-row">
+                    <dt>Selected geography</dt>
+                    <dd>{selectedGeography.geographyName}</dd>
+                  </div>
+                  <div className="metadata-row">
+                    <dt>Representative point</dt>
+                    <dd>{`${selectedGeography.latitude.toFixed(3)}, ${selectedGeography.longitude.toFixed(3)}`}</dd>
+                  </div>
+                </>
+              ) : null}
+              <div className="metadata-row">
+                <dt>Value</dt>
+                <dd>{sample.display_value}</dd>
+              </div>
+              <div className="metadata-row">
+                <dt>Cell latitude</dt>
+                <dd>{sample.nearest_latitude.toFixed(3)}</dd>
+              </div>
+              <div className="metadata-row">
+                <dt>Cell longitude</dt>
+                <dd>{sample.nearest_longitude.toFixed(3)}</dd>
+              </div>
+              <div className="metadata-row metadata-row-wide">
+                <dt>Criteria</dt>
+                <dd>{sample.criteria_note}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="drawer-section">
+            <div className="section-heading">
+              <div>
+                <span className="section-kicker">Freshness</span>
+                <h3>Published product</h3>
+              </div>
+            </div>
+            <div className="metadata-panel metadata-panel-secondary" data-testid="drawer-publication-grid">
+              <dl className="metadata-grid">
+                <div className="metadata-row">
+                  <dt>Last updated</dt>
+                  <dd>{formatDateTime(product.generated_at)}</dd>
+                </div>
+                <div className="metadata-row">
+                  <dt>Source</dt>
+                  <dd>{product.forecast_source_label}</dd>
+                </div>
+                <div className="metadata-row">
+                  <dt>Run</dt>
+                  <dd>{product.source_run_id}</dd>
+                </div>
+              </dl>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {productError && !product ? (
+        <div className="drawer-scroll">
+          <section className="drawer-section">
+            <div className="section-heading">
+              <div>
+                <span className="section-kicker">Product unavailable</span>
+                <h3>Forecast map not loaded</h3>
+              </div>
+            </div>
+            <article className="empty-card drawer-error">
+              <p>{productError}</p>
+              <span>The deterministic and probability tabs stay separate; retry will request the current tab again.</span>
+            </article>
+            <div className="drawer-actions">
+              <button type="button" className="ghost-button" onClick={onRetryProduct} disabled={isProductLoading}>
+                {isProductLoading ? "Retrying..." : "Retry product"}
+              </button>
             </div>
           </section>
         </div>

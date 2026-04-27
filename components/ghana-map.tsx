@@ -38,23 +38,33 @@ function isThemedArea(item: SeasonalMapAreaItem | null | undefined, theme: Seaso
   return item?.metric.theme === theme;
 }
 
+function metricTooltipValue(item: SeasonalMapAreaItem | null | undefined) {
+  if (!item) {
+    return "Pending";
+  }
+  if ("category_probabilities" in item.metric) {
+    return item.metric.category_label;
+  }
+  return item.metric.display_value;
+}
+
 function regionStyle(color: string, isSelected: boolean, isThemed: boolean, isHovered = false) {
   return {
     fillColor: color,
-    color: isSelected ? "#ffe3a6" : isHovered ? "rgba(255, 246, 217, 0.98)" : "rgba(240, 245, 241, 0.88)",
-    weight: isSelected ? 5.6 : isHovered ? 4.1 : 2.7,
+    color: isSelected ? "#fff0b9" : isHovered ? "rgba(255, 248, 219, 0.98)" : "rgba(240, 245, 241, 0.72)",
+    weight: isSelected ? 5.8 : isHovered ? 4.2 : 2.5,
     opacity: 1,
-    fillOpacity: isSelected ? 0.78 : isHovered && isThemed ? 0.64 : 0.48,
+    fillOpacity: isSelected ? 0.88 : isHovered && isThemed ? 0.8 : 0.66,
   };
 }
 
 function districtStyle(color: string, isSelected: boolean, isThemed: boolean, isHovered = false) {
   return {
     fillColor: color,
-    color: isSelected ? "#ffd36f" : isHovered ? "rgba(255, 244, 201, 0.94)" : "rgba(233, 240, 236, 0.82)",
-    weight: isSelected ? 3.8 : isHovered ? 2.8 : 1.4,
+    color: isSelected ? "#ffd36f" : isHovered ? "rgba(255, 244, 201, 0.94)" : "rgba(233, 240, 236, 0.62)",
+    weight: isSelected ? 3.9 : isHovered ? 2.9 : 1.2,
     opacity: 1,
-    fillOpacity: isSelected ? 0.9 : isHovered && isThemed ? 0.78 : 0.64,
+    fillOpacity: isSelected ? 0.95 : isHovered && isThemed ? 0.88 : 0.78,
   };
 }
 
@@ -99,6 +109,10 @@ type MapFeature = DistrictFeature | RegionFeature;
 type SelectedLayer = L.Layer & {
   feature?: MapFeature;
   getBounds?: () => LatLngBounds;
+};
+type InteractiveMapLayer = L.Path & {
+  feature?: MapFeature;
+  closeTooltip?: () => void;
 };
 
 function findSelectedLayer(
@@ -244,37 +258,101 @@ export function GhanaMap({
   onSelectRegion: (regionName: string) => void;
 }) {
   const geoJsonRef = useRef<L.GeoJSON | null>(null);
+  const hoveredLayerRef = useRef<InteractiveMapLayer | null>(null);
+  const mapStateRef = useRef({
+    mode,
+    thematicMode,
+    districtItemsById,
+    regionItemsByName,
+    selectedDistrictId,
+    selectedRegionName,
+  });
+
+  mapStateRef.current = {
+    mode,
+    thematicMode,
+    districtItemsById,
+    regionItemsByName,
+    selectedDistrictId,
+    selectedRegionName,
+  };
+
+  function applyLayerStyle(layer: InteractiveMapLayer, isHovered = false) {
+    if (!layer.feature) {
+      return;
+    }
+
+    const {
+      mode: currentMode,
+      thematicMode: currentTheme,
+      districtItemsById: currentDistrictItemsById,
+      regionItemsByName: currentRegionItemsByName,
+      selectedDistrictId: currentSelectedDistrictId,
+      selectedRegionName: currentSelectedRegionName,
+    } = mapStateRef.current;
+
+    if (currentMode === "region") {
+      const area = currentRegionItemsByName[layer.feature.properties.region] ?? null;
+      const isSelected = layer.feature.properties.region === currentSelectedRegionName;
+      layer.setStyle(regionAreaStyle(area, currentTheme, isSelected, isHovered && !isSelected));
+      return;
+    }
+
+    const districtFeature = layer.feature as DistrictFeature;
+    const area = currentDistrictItemsById[districtFeature.properties.location_id] ?? null;
+    const isSelected = districtFeature.properties.location_id === currentSelectedDistrictId;
+    layer.setStyle(districtAreaStyle(area, currentTheme, isSelected, isHovered && !isSelected));
+  }
+
+  function bringSelectedLayerToFront() {
+    const { mode: currentMode, selectedDistrictId: currentSelectedDistrictId, selectedRegionName: currentSelectedRegionName } =
+      mapStateRef.current;
+    const selectedLayer = findSelectedLayer(
+      geoJsonRef.current,
+      currentMode,
+      currentSelectedDistrictId,
+      currentSelectedRegionName,
+    );
+    if (selectedLayer && "bringToFront" in selectedLayer) {
+      (selectedLayer as L.Path).bringToFront();
+    }
+  }
+
+  function clearHoveredLayer(targetLayer?: InteractiveMapLayer | null) {
+    const layer = targetLayer ?? hoveredLayerRef.current;
+    if (!layer || !layer.feature) {
+      if (!targetLayer) {
+        hoveredLayerRef.current = null;
+      }
+      return;
+    }
+
+    applyLayerStyle(layer);
+    layer.closeTooltip?.();
+    if (!targetLayer || hoveredLayerRef.current === layer) {
+      hoveredLayerRef.current = null;
+    }
+    bringSelectedLayerToFront();
+  }
 
   useEffect(() => {
+    clearHoveredLayer();
     if (!geoJsonRef.current) {
       return;
     }
 
     geoJsonRef.current.eachLayer((layer) => {
-      const mapLayer = layer as L.Path & { feature?: MapFeature };
+      const mapLayer = layer as InteractiveMapLayer;
       if (!mapLayer.feature) {
         return;
       }
 
-      if (mode === "region") {
-        const area = regionItemsByName[mapLayer.feature.properties.region] ?? null;
-        const isSelected = mapLayer.feature.properties.region === selectedRegionName;
-        mapLayer.setStyle(regionAreaStyle(area, thematicMode, isSelected));
-        if (isSelected) {
-          mapLayer.bringToFront();
-        }
-        return;
-      }
-
-      const districtFeature = mapLayer.feature as DistrictFeature;
-      const area = districtItemsById[districtFeature.properties.location_id] ?? null;
-      mapLayer.setStyle(districtAreaStyle(area, thematicMode, districtFeature.properties.location_id === selectedDistrictId));
-      if (districtFeature.properties.location_id === selectedDistrictId) {
-        mapLayer.bringToFront();
-      }
+      applyLayerStyle(mapLayer);
     });
+    bringSelectedLayerToFront();
   }, [
     districtItemsById,
+    isDrawerOpen,
     mode,
     regionItemsByName,
     selectedDistrictId,
@@ -285,12 +363,12 @@ export function GhanaMap({
   const handlers = useMemo(
     () => ({
       click: (event: LeafletMouseEvent) => {
-        const target = event.target as L.Path & { feature?: MapFeature };
+        const target = event.target as InteractiveMapLayer;
         if (!target.feature) {
           return;
         }
 
-        if (mode === "region") {
+        if (mapStateRef.current.mode === "region") {
           onSelectRegion(target.feature.properties.region);
           return;
         }
@@ -298,50 +376,29 @@ export function GhanaMap({
         onSelectDistrict(target.feature as DistrictFeature);
       },
       mouseover: (event: LeafletMouseEvent) => {
-        const target = event.target as L.Path & { feature?: MapFeature };
+        const target = event.target as InteractiveMapLayer;
         if (!target.feature) {
           return;
         }
 
-        if (mode === "region") {
-          const isSelected = target.feature.properties.region === selectedRegionName;
-          const area = regionItemsByName[target.feature.properties.region] ?? null;
-          target.setStyle(regionAreaStyle(area, thematicMode, isSelected, !isSelected));
-          return;
+        if (hoveredLayerRef.current && hoveredLayerRef.current !== target) {
+          clearHoveredLayer(hoveredLayerRef.current);
         }
 
-        const districtFeature = target.feature as DistrictFeature;
-        const isSelected = districtFeature.properties.location_id === selectedDistrictId;
-        const area = districtItemsById[districtFeature.properties.location_id] ?? null;
-        target.setStyle(districtAreaStyle(area, thematicMode, isSelected, !isSelected));
+        hoveredLayerRef.current = target;
+        applyLayerStyle(target, true);
         target.bringToFront();
       },
       mouseout: (event: LeafletMouseEvent) => {
-        const target = event.target as L.Path & { feature?: MapFeature };
-        if (!target.feature) {
-          return;
+        const target = event.target as InteractiveMapLayer;
+        if (hoveredLayerRef.current === target) {
+          clearHoveredLayer(target);
         }
-
-        if (mode === "region") {
-          const area = regionItemsByName[target.feature.properties.region] ?? null;
-          target.setStyle(regionAreaStyle(area, thematicMode, target.feature.properties.region === selectedRegionName));
-          return;
-        }
-
-        const districtFeature = target.feature as DistrictFeature;
-        const area = districtItemsById[districtFeature.properties.location_id] ?? null;
-        target.setStyle(districtAreaStyle(area, thematicMode, districtFeature.properties.location_id === selectedDistrictId));
       },
     }),
     [
-      districtItemsById,
-      mode,
       onSelectDistrict,
       onSelectRegion,
-      regionItemsByName,
-      selectedDistrictId,
-      selectedRegionName,
-      thematicMode,
     ],
   );
 
@@ -367,7 +424,7 @@ export function GhanaMap({
       <TileLayer
         attribution='Tiles &copy; CartoDB'
         url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
-        opacity={0.46}
+        opacity={0.28}
       />
       {mode === "region" ? (
         <GeoJSON
@@ -389,7 +446,7 @@ export function GhanaMap({
             const tooltipLabel =
               seasonalMetricMode === "calendar" && calendarSubseason ? `${variableLabel} (${calendarSubseason})` : variableLabel;
             layer.bindTooltip(
-              `<strong>${feature.properties.region}</strong><br/>${tooltipLabel}: ${themeMetric?.category_label ?? "Pending"}`,
+              `<strong>${feature.properties.region}</strong><br/>${tooltipLabel}: ${metricTooltipValue(regionItemsByName[feature.properties.region] ?? null)}`,
               {
                 direction: "top",
                 className: "district-tooltip",
@@ -419,7 +476,7 @@ export function GhanaMap({
               const tooltipLabel =
                 seasonalMetricMode === "calendar" && calendarSubseason ? `${variableLabel} (${calendarSubseason})` : variableLabel;
               layer.bindTooltip(
-                `<strong>${feature.properties.display_name}</strong><br/>${tooltipLabel}: ${themeMetric?.category_label ?? "Pending"}`,
+                `<strong>${feature.properties.display_name}</strong><br/>${tooltipLabel}: ${metricTooltipValue(districtItemsById[feature.properties.location_id] ?? null)}`,
                 {
                   direction: "top",
                   className: "district-tooltip",
@@ -434,8 +491,8 @@ export function GhanaMap({
             interactive={false}
             style={() => ({
               fillOpacity: 0,
-              color: "rgba(21, 34, 29, 0.58)",
-              weight: 1.4,
+              color: "rgba(21, 34, 29, 0.44)",
+              weight: 1.2,
               opacity: 1,
             })}
           />

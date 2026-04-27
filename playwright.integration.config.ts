@@ -3,7 +3,9 @@ import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const repoRoot = path.resolve(__dirname, "..");
-const smokeForecastPath = path.join(repoRoot, "backend", "data", "sample_forecast_smoke.nc");
+const currentEnv = Object.fromEntries(
+  Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+);
 
 export default defineConfig({
   testDir: "./tests",
@@ -18,16 +20,12 @@ export default defineConfig({
   webServer: [
     {
       command:
-        "cmd /c if not exist data\\artifacts mkdir data\\artifacts && xcopy /E /I /Y training\\data\\artifacts data\\artifacts >nul && python -m uvicorn cumulus.main:app --app-dir backend\\src --host 127.0.0.1 --port 8000",
+        "cmd /c if not exist backend\\data\\artifacts mkdir backend\\data\\artifacts && xcopy /E /I /Y ml\\data\\artifacts backend\\data\\artifacts >nul && powershell -ExecutionPolicy Bypass -File .\\backend\\scripts\\start-backend-local.ps1",
       cwd: repoRoot,
       url: "http://127.0.0.1:8000/health",
       reuseExistingServer: false,
       timeout: 120_000,
-      env: {
-        ...process.env,
-        CUMULUS_UPSTREAM_FORECAST_PATH: smokeForecastPath,
-        CUMULUS_UPSTREAM_FORECAST_ENGINE: "scipy",
-      },
+      env: currentEnv,
     },
     {
       command: "cmd /c npm run start:server -- --hostname 127.0.0.1 --port 3000",
@@ -36,7 +34,7 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
-        ...process.env,
+        ...currentEnv,
         NEXT_PUBLIC_API_BASE_URL: "http://127.0.0.1:8000",
         NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP: "1",
       },

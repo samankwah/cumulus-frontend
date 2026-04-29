@@ -51,7 +51,7 @@ function metricTooltipValue(item: SeasonalMapAreaItem | null | undefined) {
 function regionStyle(color: string, isSelected: boolean, isThemed: boolean, isHovered = false) {
   return {
     fillColor: color,
-    color: isSelected ? "#fff0b9" : isHovered ? "rgba(255, 248, 219, 0.98)" : "rgba(240, 245, 241, 0.72)",
+    color: isSelected ? "#23d1ad" : isHovered ? "rgba(255, 255, 255, 0.95)" : "rgba(73, 88, 104, 0.72)",
     weight: isSelected ? 5.8 : isHovered ? 4.2 : 2.5,
     opacity: 1,
     fillOpacity: isSelected ? 0.88 : isHovered && isThemed ? 0.8 : 0.66,
@@ -61,7 +61,7 @@ function regionStyle(color: string, isSelected: boolean, isThemed: boolean, isHo
 function districtStyle(color: string, isSelected: boolean, isThemed: boolean, isHovered = false) {
   return {
     fillColor: color,
-    color: isSelected ? "#ffd36f" : isHovered ? "rgba(255, 244, 201, 0.94)" : "rgba(233, 240, 236, 0.62)",
+    color: isSelected ? "#23d1ad" : isHovered ? "rgba(255, 255, 255, 0.94)" : "rgba(73, 88, 104, 0.62)",
     weight: isSelected ? 3.9 : isHovered ? 2.9 : 1.2,
     opacity: 1,
     fillOpacity: isSelected ? 0.95 : isHovered && isThemed ? 0.88 : 0.78,
@@ -491,7 +491,7 @@ export function GhanaMap({
             interactive={false}
             style={() => ({
               fillOpacity: 0,
-              color: "rgba(21, 34, 29, 0.44)",
+              color: "rgba(73, 88, 104, 0.46)",
               weight: 1.2,
               opacity: 1,
             })}

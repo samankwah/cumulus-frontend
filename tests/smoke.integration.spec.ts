@@ -4,11 +4,18 @@ import { expect, test } from "@playwright/test";
 const API_BASE_URL = process.env.TEST_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 async function clickRasterMap(page: Page) {
-  const box = await page.locator(".leaflet-container").boundingBox();
-  if (!box) {
-    throw new Error("Expected raster map bounding box.");
-  }
-  await page.mouse.click(box.x + box.width * 0.78, box.y + box.height * 0.52);
+  const geographyLayer = page.locator('[class*="forecast-feature"] .leaflet-interactive').first();
+  await geographyLayer.waitFor({ state: "attached", timeout: 30_000 });
+  await geographyLayer.click({ force: true });
+}
+
+async function hoverRasterMap(page: Page) {
+  const geographyLayer = page.locator('[class*="forecast-feature"] .leaflet-interactive').first();
+  await geographyLayer.waitFor({ state: "attached", timeout: 30_000 });
+  await geographyLayer.hover({ force: true });
+  const tooltip = page.locator(".leaflet-tooltip").last();
+  await expect(tooltip).toBeVisible({ timeout: 30_000 });
+  return tooltip;
 }
 
 async function refreshProducts(request: APIRequestContext) {
@@ -59,13 +66,19 @@ test("probability and deterministic tabs work against the real forecast artifact
     }
   });
 
-  await Promise.all([
-    waitForProbabilityProduct(page, "onset"),
-    page.goto("/", { waitUntil: "domcontentloaded" }),
-  ]);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("map-frame")).toBeVisible();
   await expect(page.getByTestId("dashboard-mode-region")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("theme-select")).toHaveValue("");
+  await expect(page.getByTestId("season-select")).toHaveValue("");
+
+  await page.getByTestId("theme-select").selectOption("onset");
+  await Promise.all([
+    waitForProbabilityProduct(page, "onset"),
+    page.getByTestId("season-select").selectOption("southern_major"),
+  ]);
+
   await expect(page.getByTestId("theme-select")).toHaveValue("onset");
   await expect(page.getByTestId("season-select")).toHaveValue("southern_major");
   await expect(page.getByTestId("probability-legend")).toContainText(/Early|Late/);
@@ -73,10 +86,17 @@ test("probability and deterministic tabs work against the real forecast artifact
 
   await clickRasterMap(page);
   await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/, { timeout: 30_000 });
+  await expect(page.getByTestId("drawer-selected-geography")).not.toHaveText(/Select a geography|Forecast point/);
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Forecast signal", { timeout: 30_000 });
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Confidence", { timeout: 30_000 });
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Nearest cell", { timeout: 30_000 });
   await expect(page.getByTestId("selection-summary")).toContainText("Onset Date", { timeout: 30_000 });
   await expect(page.getByTestId("selection-summary")).toContainText(/Early|Near-Normal|Late/, { timeout: 30_000 });
   await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Region");
   await expect(page.getByTestId("drawer-publication-grid")).toContainText("Cumulus Bridge Product");
+  const probabilityTooltip = await hoverRasterMap(page);
+  await expect(probabilityTooltip).not.toContainText("Sample district representative point");
+  await expect(probabilityTooltip).not.toContainText("Sample region representative point");
 
   await Promise.all([
     waitForDeterministicProduct(page, "early_dry_spell"),
@@ -90,9 +110,16 @@ test("probability and deterministic tabs work against the real forecast artifact
   await expect(page.getByTestId("deterministic-legend")).toBeVisible();
   await clickRasterMap(page);
   await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/, { timeout: 30_000 });
+  await expect(page.getByTestId("drawer-selected-geography")).not.toHaveText(/Select a geography|Forecast point/);
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Forecast signal", { timeout: 30_000 });
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Value", { timeout: 30_000 });
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Nearest cell", { timeout: 30_000 });
   await expect(page.getByTestId("selection-summary")).toContainText("Early-Season Dry Spell", { timeout: 30_000 });
   await expect(page.getByTestId("selection-summary")).toContainText("day(s)", { timeout: 30_000 });
   await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Region");
   await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Cell latitude");
+  const deterministicTooltip = await hoverRasterMap(page);
+  await expect(deterministicTooltip).not.toContainText("Sample district representative point");
+  await expect(deterministicTooltip).not.toContainText("Sample region representative point");
   expect(legacyRequests).toHaveLength(0);
 });

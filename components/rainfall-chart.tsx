@@ -43,17 +43,17 @@ export function RainfallChart({
       <div className="chart-shell">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke="rgba(221, 235, 226, 0.14)" vertical={false} />
+            <CartesianGrid stroke="rgba(105, 119, 135, 0.22)" vertical={false} />
             <XAxis
               dataKey="label"
               tickLine={false}
               axisLine={false}
-              tick={{ fill: "rgba(230, 238, 232, 0.82)", fontSize: 12 }}
+              tick={{ fill: "rgba(32, 41, 50, 0.66)", fontSize: 12 }}
             />
             <YAxis
               tickLine={false}
               axisLine={false}
-              tick={{ fill: "rgba(230, 238, 232, 0.82)", fontSize: 12 }}
+              tick={{ fill: "rgba(32, 41, 50, 0.66)", fontSize: 12 }}
               width={42}
             />
             <Tooltip
@@ -68,18 +68,19 @@ export function RainfallChart({
               }
               formatter={(value: number, name: string) => [`${value.toFixed(1)} mm`, name]}
               contentStyle={{
-                border: "1px solid rgba(216, 229, 220, 0.18)",
-                borderRadius: 16,
-                background: "rgba(18, 34, 29, 0.95)",
-                color: "rgba(242, 247, 243, 0.96)",
+                border: "1px solid rgba(255, 255, 255, 0.58)",
+                borderRadius: 18,
+                background: "rgba(238, 243, 247, 0.96)",
+                color: "rgba(32, 41, 50, 0.96)",
+                boxShadow: "8px 10px 20px rgba(139, 153, 170, 0.28), -7px -7px 16px rgba(255, 255, 255, 0.64)",
               }}
             />
-            <Legend wrapperStyle={{ color: "rgba(242, 247, 243, 0.92)" }} />
-            <Bar dataKey="corrected" fill="#5aa172" name="Corrected rainfall" radius={[10, 10, 0, 0]} />
+            <Legend wrapperStyle={{ color: "rgba(32, 41, 50, 0.72)" }} />
+            <Bar dataKey="corrected" fill="#23d1ad" name="Corrected rainfall" radius={[10, 10, 0, 0]} />
             <Line
               type="monotone"
               dataKey="raw"
-              stroke="#be7c37"
+              stroke="#2f61c5"
               strokeWidth={2.5}
               dot={{ r: 2.5 }}
               name="Raw rainfall"

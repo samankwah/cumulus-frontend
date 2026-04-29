@@ -21,7 +21,7 @@ cmd /c npm run dev
 
 Set `NEXT_PUBLIC_API_BASE_URL` to the running FastAPI backend, for example `http://127.0.0.1:8000`.
 
-Use `cmd /c npm run dev` for iterative development.
+Use `cmd /c npm run dev` for iterative development. It runs `frontend/scripts/start-development.mjs`, a custom Next development server, so local startup still works on Windows environments where the raw Next CLI worker exits with `spawn EPERM`. If you specifically need the raw Next CLI, use `cmd /c npm run dev:next`.
 
 For a local production-style run, use the PowerShell helper:
 
@@ -34,6 +34,20 @@ That helper always rebuilds before `next start` so the server and emitted chunk 
 ## Local start scripts
 
 If you want repeatable local startup commands, use the PowerShell helpers from the repo root.
+
+To start both local servers with recorded PIDs and logs:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+```
+
+To stop only the recorded Cumulus local server processes:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-local.ps1
+```
+
+The combined launcher refuses to start if ports `8000` or `3000` are already listening and prints the owning PID. Add `-ForceRestart` only when replacing a detected local Cumulus backend or frontend process.
 
 For the development server:
 
@@ -56,6 +70,8 @@ powershell -ExecutionPolicy Bypass -File .\frontend\start-frontend-production-lo
 These defaults point the frontend to `http://127.0.0.1:8000` and the backend to `data/sample_forecast_smoke.nc` unless you already set the relevant environment variables.
 
 Map polygons stay local in `frontend/public/data/*.geojson`. The frontend renders backend-generated seasonal classifications rather than raw forecast rasters. ERA5 and GFS remain backend source options under `ml/data/raw`, and in-situ station data is used for training/calibration rather than as a direct map layer.
+
+Chrome requests to `/.well-known/appspecific/com.chrome.devtools.json` can return 404 during local development; that is browser/devtools probing and not an app failure. Next.js may compile `/_not-found` in dev, React StrictMode may duplicate initial frontend requests, and Leaflet map tile requests are expected while the map is visible.
 
 ## Build checks
 

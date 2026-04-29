@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
-import { Sora, Source_Sans_3 } from "next/font/google";
+import { Space_Grotesk } from "next/font/google";
 
 import "leaflet/dist/leaflet.css";
 
 import "./globals.css";
 
-const sora = Sora({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-display",
-});
-
-const sourceSans = Source_Sans_3({
-  subsets: ["latin"],
-  variable: "--font-body",
+  variable: "--font-space-grotesk",
 });
 
 export const metadata: Metadata = {
@@ -34,7 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${sora.variable} ${sourceSans.variable}`}>{children}</body>
+      <body className={spaceGrotesk.variable}>{children}</body>
     </html>
   );
 }

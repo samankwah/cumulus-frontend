@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const frontendPort = process.env.FRONTEND_PORT ?? "3000";
+const frontendUrl = `http://127.0.0.1:${frontendPort}`;
+
 export default defineConfig({
   testDir: "./tests",
   testIgnore: /.*\.integration\.spec\.ts/,
@@ -7,13 +10,13 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: frontendUrl,
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "cmd /c npm run start:server -- --hostname 127.0.0.1 --port 3000",
+    command: `cmd /c npm run start:server -- --hostname 127.0.0.1 --port ${frontendPort}`,
     cwd: __dirname,
-    url: "http://127.0.0.1:3000",
+    url: frontendUrl,
     reuseExistingServer: false,
     timeout: 120_000,
     env: {

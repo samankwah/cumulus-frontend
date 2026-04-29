@@ -1,9 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import {
   forecastThemeAvailabilityReason,
+  forecastThemeUnitLabel,
+  formatDayOfYearWeekLabel,
   formatForecastThemeOptionLabel,
   FORECAST_VIEW_MODE_OPTIONS,
   seasonProfileLabel,
@@ -24,6 +26,12 @@ import type {
   SeasonProfile,
 } from "@/lib/types";
 
+type DropdownOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+};
+
 function DropdownField({
   label,
   placeholder,
@@ -33,7 +41,7 @@ function DropdownField({
   onChange,
   testId,
   displayTestId,
-  children,
+  options,
 }: {
   label: string;
   placeholder: string;
@@ -43,25 +51,120 @@ function DropdownField({
   onChange: (value: string) => void;
   testId: string;
   displayTestId?: string;
-  children: ReactNode;
+  options: DropdownOption[];
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const labelId = useId();
+  const listboxId = useId();
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const selectedOption = options.find((option) => option.value === value);
+  const displayLabel = value ? selectedLabel ?? selectedOption?.label ?? value : placeholder;
+
+  useEffect(() => {
+    if (disabled) {
+      setIsOpen(false);
+    }
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (fieldRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setIsOpen(false);
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen]);
+
+  function commitSelection(nextValue: string) {
+    const option = options.find((item) => item.value === nextValue);
+    if (!option || option.disabled) {
+      return;
+    }
+    onChange(nextValue);
+    setIsOpen(false);
+    selectRef.current?.focus({ preventScroll: true });
+  }
+
   return (
-    <label className="control-field">
-      <span className="control-label">{label}</span>
-      <span className="control-select-shell">
-        <select data-testid={testId} value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}>
-          {children}
-        </select>
-        <span className="control-select-value" data-testid={displayTestId}>
-          {value ? selectedLabel ?? value : placeholder}
-        </span>
-        <span className="control-chevron" aria-hidden="true">
-          <svg viewBox="0 0 12 8" focusable="false">
-            <path d="M1 1.25 6 6.25 11 1.25" />
-          </svg>
-        </span>
+    <div className="control-field control-field-dropdown" ref={fieldRef}>
+      <span className="control-label" id={labelId}>
+        {label}
       </span>
-    </label>
+      <span className={`control-select-shell${isOpen ? " open" : ""}`}>
+        <select
+          ref={selectRef}
+          data-testid={testId}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+          tabIndex={-1}
+          aria-hidden="true"
+        >
+          <option value="" disabled>
+            {placeholder}
+          </option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="control-select-button"
+          aria-labelledby={labelId}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-controls={isOpen ? listboxId : undefined}
+          disabled={disabled}
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          <span className="control-select-value" data-testid={displayTestId}>
+            {displayLabel}
+          </span>
+          <span className="control-chevron" aria-hidden="true">
+            <svg viewBox="0 0 12 8" focusable="false">
+              <path d="M1 1.25 6 6.25 11 1.25" />
+            </svg>
+          </span>
+        </button>
+        {isOpen ? (
+          <div className="control-select-menu" id={listboxId} role="listbox" aria-labelledby={labelId}>
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={option.value === value}
+                className={option.value === value ? "selected" : ""}
+                disabled={option.disabled}
+                onClick={() => commitSelection(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </span>
+    </div>
   );
 }
 
@@ -84,21 +187,52 @@ function deterministicGradient(stops: ForecastProductColorRampStop[]) {
   return `linear-gradient(90deg, ${stops.map((stop) => `${stop.color} ${Math.round(stop.offset * 100)}%`).join(", ")})`;
 }
 
-function deterministicUnitLabel(unit: string) {
-  if (unit === "day_of_year") {
-    return "doy";
-  }
-  if (unit === "days") {
-    return "d";
-  }
-  return unit;
-}
-
 function probabilitySampleLookup(sample: ForecastProbabilitySample | ForecastDeterministicSample | null) {
   if (!isProbabilitySample(sample)) {
     return null;
   }
   return new Map(sample.category_probabilities.map((entry) => [entry.category_code, entry.percentage]));
+}
+
+const PROBABILITY_AXIS_TICKS = [40, 50, 60, 70, 80];
+
+function probabilityRamp(color: string) {
+  return `linear-gradient(90deg, color-mix(in srgb, ${color} 24%, #f7fbf7) 0%, ${color} 56%, color-mix(in srgb, ${color} 72%, #10221d) 100%)`;
+}
+
+function probabilityMarkerOffset(percentage: number) {
+  const lower = PROBABILITY_AXIS_TICKS[0];
+  const upper = PROBABILITY_AXIS_TICKS[PROBABILITY_AXIS_TICKS.length - 1];
+  const offset = ((percentage - lower) / (upper - lower)) * 100;
+  return Math.max(0, Math.min(100, offset));
+}
+
+function deterministicTickLabel(product: ForecastDeterministicMapProduct, value: number) {
+  if (product.unit === "day_of_year") {
+    return formatDayOfYearWeekLabel(value, product.forecast_year);
+  }
+  if (product.unit === "days") {
+    return String(Math.round(value));
+  }
+  return String(value);
+}
+
+function deterministicUnitLabel(product: ForecastDeterministicMapProduct) {
+  if (product.unit === "day_of_year") {
+    return null;
+  }
+  if (product.unit === "days") {
+    return "days";
+  }
+  return product.unit;
+}
+
+function subseasonOptionLabel(option: CalendarSubseason, activeThemeOption: ForecastThemeOption | null) {
+  if (!activeThemeOption?.requires_subseason) {
+    return option;
+  }
+  const unit = forecastThemeUnitLabel(activeThemeOption.theme);
+  return unit ? `${option} (${unit})` : option;
 }
 
 export function FloatingControls({
@@ -109,6 +243,8 @@ export function FloatingControls({
   thematicMode,
   setThematicMode,
   themeOptions,
+  isThemeOptionsLoading,
+  themeOptionsError,
   activeThemeOption,
   seasonProfile,
   setSeasonProfile,
@@ -129,6 +265,8 @@ export function FloatingControls({
   thematicMode: ForecastArtifactTheme | null;
   setThematicMode: (theme: ForecastArtifactTheme | null) => void;
   themeOptions: ForecastThemeOption[];
+  isThemeOptionsLoading: boolean;
+  themeOptionsError: string | null;
   activeThemeOption: ForecastThemeOption | null;
   seasonProfile: SeasonProfile | null;
   setSeasonProfile: (value: SeasonProfile | null) => void;
@@ -144,10 +282,21 @@ export function FloatingControls({
 }) {
   const deterministicStops = isDeterministicProduct(product) ? product.color_ramp : [];
   const deterministicTicks = isDeterministicProduct(product) ? product.legend_ticks : [];
+  const deterministicUnit = isDeterministicProduct(product) ? deterministicUnitLabel(product) : null;
   const availabilityReason = forecastThemeAvailabilityReason(activeThemeOption);
+  const themeSelectUnavailable = isThemeOptionsLoading || Boolean(themeOptionsError);
+  const themeSelectPlaceholder = isThemeOptionsLoading
+    ? "Loading variables..."
+    : themeOptionsError
+      ? "Variable options unavailable"
+      : "All Variables";
   const shouldShowSeasonSelect = !activeThemeOption || activeThemeOption.requires_season;
   const probabilityPercentages = probabilitySampleLookup(sample);
-  const legendClassName = product ? "floating-legend floating-legend-compact" : "floating-legend";
+  const legendClassName = isDeterministicProduct(product)
+    ? "floating-legend floating-legend-deterministic"
+    : isProbabilityProduct(product)
+      ? "floating-legend floating-legend-probability"
+      : "floating-legend";
   const forecastLegend = (
     <>
       {!product ? (
@@ -156,53 +305,52 @@ export function FloatingControls({
         </div>
       ) : isProbabilityProduct(product) ? (
         <div className="probability-colorbar" data-testid="probability-legend">
-          <div className="probability-colorbar-shell">
-            <span className="probability-colorbar-unit">%</span>
-            <div
-              className="probability-colorbar-track"
-              style={{ gridTemplateColumns: `repeat(${product.legend.length}, minmax(0, 1fr))` }}
-            >
-              {product.legend.map((item) => (
-                <span
-                  key={item.category_code}
-                  className="probability-colorbar-segment"
-                  style={{ backgroundColor: item.color }}
-                  title={item.hint}
-                  aria-label={`${item.label}: ${item.hint}`}
-                  data-testid={`legend-item-${item.category_code}`}
-                >
-                  {item.label}
-                </span>
-              ))}
-            </div>
+          <div className="probability-scale-grid">
+            {product.legend.map((item) => {
+              const percentage = probabilityPercentages?.get(item.category_code);
+              const boundedPercentage = typeof percentage === "number" ? Math.max(0, Math.min(100, percentage)) : null;
+              const markerOffset = boundedPercentage !== null ? probabilityMarkerOffset(boundedPercentage) : null;
+              return (
+                <div key={item.category_code} className="probability-scale-item" data-testid={`legend-item-${item.category_code}`}>
+                  <div
+                    className="probability-scale-track"
+                    style={{ backgroundImage: probabilityRamp(item.color) }}
+                    title={item.hint}
+                    aria-label={`${item.label}: ${item.hint}`}
+                  >
+                    {boundedPercentage !== null ? (
+                      <span className="probability-scale-marker" style={{ left: `${markerOffset}%` }} aria-hidden="true" />
+                    ) : null}
+                  </div>
+                  <div className="probability-scale-axis" aria-hidden="true">
+                    {PROBABILITY_AXIS_TICKS.map((tick) => (
+                      <span key={tick}>{tick}</span>
+                    ))}
+                  </div>
+                  <span className="probability-scale-label">{item.label} (%)</span>
+                </div>
+              );
+            })}
           </div>
-          {probabilityPercentages ? (
-            <div
-              className="probability-colorbar-ticks"
-              style={{ gridTemplateColumns: `repeat(${product.legend.length}, minmax(0, 1fr))` }}
-            >
-              {product.legend.map((item) => {
-                const percentage = probabilityPercentages.get(item.category_code);
-                return <span key={item.category_code}>{typeof percentage === "number" ? `${Math.round(percentage)}%` : ""}</span>;
-              })}
-            </div>
-          ) : null}
         </div>
       ) : (
         <div className="deterministic-colorbar" data-testid="deterministic-legend">
+          {deterministicUnit ? <span className="deterministic-colorbar-unit">{deterministicUnit}</span> : null}
           <div className="deterministic-colorbar-shell">
-            <span className="deterministic-colorbar-unit">{deterministicUnitLabel(product.unit)}</span>
             <div
               className="deterministic-colorbar-track"
               style={{
                 backgroundImage: deterministicGradient(deterministicStops),
-                gridTemplateColumns: `repeat(${deterministicTicks.length}, minmax(0, 1fr))`,
               }}
-            >
-              {deterministicTicks.map((tick) => (
-                <span key={tick}>{tick}</span>
-              ))}
-            </div>
+            />
+          </div>
+          <div
+            className="deterministic-colorbar-ticks"
+            style={{ gridTemplateColumns: `repeat(${deterministicTicks.length}, minmax(0, 1fr))` }}
+          >
+            {deterministicTicks.map((tick) => (
+              <span key={tick}>{deterministicTickLabel(product, tick)}</span>
+            ))}
           </div>
         </div>
       )}
@@ -274,24 +422,25 @@ export function FloatingControls({
           <div className="control-group control-group-primary">
             <DropdownField
               label="Variable"
-              placeholder="All Variables"
-              selectedLabel={activeThemeOption?.label}
+              placeholder={themeSelectPlaceholder}
+              selectedLabel={themeSelectUnavailable || !activeThemeOption ? null : formatForecastThemeOptionLabel(activeThemeOption)}
               value={thematicMode ?? ""}
               onChange={(value) => {
                 setThematicMode(value ? (value as ForecastArtifactTheme) : null);
               }}
               testId="theme-select"
               displayTestId="theme-select-display"
-            >
-              <option value="" disabled>
-                All Variables
-              </option>
-              {themeOptions.map((option) => (
-                <option key={option.theme} value={option.theme} disabled={!option.enabled}>
-                  {formatForecastThemeOptionLabel(option)}
-                </option>
-              ))}
-            </DropdownField>
+              disabled={themeSelectUnavailable}
+              options={
+                themeSelectUnavailable
+                  ? []
+                  : themeOptions.map((option) => ({
+                      value: option.theme,
+                      label: formatForecastThemeOptionLabel(option),
+                      disabled: !option.enabled,
+                    }))
+              }
+            />
             {shouldShowSeasonSelect ? (
               <DropdownField
                 label="Season"
@@ -304,40 +453,40 @@ export function FloatingControls({
                 testId="season-select"
                 displayTestId="season-select-display"
                 disabled={!activeThemeOption?.requires_season}
-              >
-                <option value="" disabled>
-                  All Seasons
-                </option>
-                {(activeThemeOption?.seasons ?? []).map((option) => (
-                  <option key={option} value={option}>
-                    {seasonProfileLabel(option)}
-                  </option>
-                ))}
-              </DropdownField>
+                options={(activeThemeOption?.seasons ?? []).map((option) => ({
+                  value: option,
+                  label: seasonProfileLabel(option),
+                }))}
+              />
             ) : null}
             {activeThemeOption?.requires_subseason ? (
               <DropdownField
                 label="Sub-season"
                 placeholder="All Sub-seasons"
-                selectedLabel={subseason}
+                selectedLabel={subseason ? subseasonOptionLabel(subseason, activeThemeOption) : null}
                 value={subseason ?? ""}
                 onChange={(value) => {
                   setSubseason(value ? (value as CalendarSubseason) : null);
                 }}
                 testId="subseason-select"
                 displayTestId="subseason-select-display"
-              >
-                <option value="" disabled>
-                  All Sub-seasons
-                </option>
-                {activeThemeOption.subseasons.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </DropdownField>
+                options={activeThemeOption.subseasons.map((option) => ({
+                  value: option,
+                  label: subseasonOptionLabel(option, activeThemeOption),
+                }))}
+              />
             ) : null}
-            {availabilityReason ? <p className="control-inline-note">{availabilityReason}</p> : null}
+            {themeOptionsError ? (
+              <p className="control-inline-note" data-testid="theme-options-status-note">
+                {themeOptionsError}
+              </p>
+            ) : availabilityReason ? (
+              <p className="control-inline-note">{availabilityReason}</p>
+            ) : product?.is_low_resolution_fallback ? (
+              <p className="control-inline-note" data-testid="fallback-status-note">
+                Derived low-resolution fallback.
+              </p>
+            ) : null}
           </div>
 
           {productError ? (

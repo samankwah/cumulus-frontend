@@ -10,6 +10,12 @@ import type {
   RegionMetadata,
 } from "@/lib/types";
 
+type PointLikeFeatureCollection = {
+  features: Array<{
+    geometry: Geometry;
+  }>;
+};
+
 type RawMapPayload = {
   districts: RawDistrictFeatureCollection;
   regions: RegionFeatureCollection;
@@ -106,6 +112,95 @@ function representativePoint(geometry: Geometry): RepresentativePoint {
   }
 
   return bboxCenter(largestRing);
+}
+
+function isPointOnSegment(
+  longitude: number,
+  latitude: number,
+  start: Position,
+  end: Position,
+) {
+  const [startLongitude, startLatitude] = start;
+  const [endLongitude, endLatitude] = end;
+  const crossProduct =
+    (latitude - startLatitude) * (endLongitude - startLongitude) -
+    (longitude - startLongitude) * (endLatitude - startLatitude);
+  const tolerance = 1e-10;
+
+  if (Math.abs(crossProduct) > tolerance) {
+    return false;
+  }
+
+  return (
+    longitude >= Math.min(startLongitude, endLongitude) - tolerance &&
+    longitude <= Math.max(startLongitude, endLongitude) + tolerance &&
+    latitude >= Math.min(startLatitude, endLatitude) - tolerance &&
+    latitude <= Math.max(startLatitude, endLatitude) + tolerance
+  );
+}
+
+function isPointInRing(longitude: number, latitude: number, ring: Position[]) {
+  if (ring.length < 4) {
+    return false;
+  }
+
+  let inside = false;
+  for (let index = 0, previousIndex = ring.length - 1; index < ring.length; previousIndex = index, index += 1) {
+    const current = ring[index];
+    const previous = ring[previousIndex];
+    const [currentLongitude, currentLatitude] = current;
+    const [previousLongitude, previousLatitude] = previous;
+
+    if (isPointOnSegment(longitude, latitude, previous, current)) {
+      return true;
+    }
+
+    const crossesLatitude = currentLatitude > latitude !== previousLatitude > latitude;
+    if (!crossesLatitude) {
+      continue;
+    }
+
+    const intersectionLongitude =
+      ((previousLongitude - currentLongitude) * (latitude - currentLatitude)) /
+        (previousLatitude - currentLatitude) +
+      currentLongitude;
+
+    if (longitude < intersectionLongitude) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+function isPointInPolygonCoordinates(longitude: number, latitude: number, polygon: Position[][]) {
+  const outerRing = polygon[0];
+  if (!outerRing || !isPointInRing(longitude, latitude, outerRing)) {
+    return false;
+  }
+
+  const holes = polygon.slice(1);
+  return !holes.some((ring) => isPointInRing(longitude, latitude, ring));
+}
+
+export function isPointInGeometry(latitude: number, longitude: number, geometry: Geometry) {
+  if (geometry.type === "Polygon") {
+    return isPointInPolygonCoordinates(longitude, latitude, geometry.coordinates);
+  }
+
+  if (geometry.type === "MultiPolygon") {
+    return geometry.coordinates.some((polygon) => isPointInPolygonCoordinates(longitude, latitude, polygon));
+  }
+
+  return false;
+}
+
+export function isPointInFeatureCollection(
+  latitude: number,
+  longitude: number,
+  featureCollection: PointLikeFeatureCollection,
+) {
+  return featureCollection.features.some((feature) => isPointInGeometry(latitude, longitude, feature.geometry));
 }
 
 async function loadJson<T>(path: string): Promise<T> {

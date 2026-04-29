@@ -404,6 +404,18 @@ export type ForecastProductColorRampStop = {
   color: string;
 };
 
+export type ForecastProductSourceArtifactType = "final_netcdf" | "daily_wass2s_derived";
+
+export type ForecastProductGridShape = {
+  y: number;
+  x: number;
+};
+
+export type ForecastProductGridResolution = {
+  latitude: number | null;
+  longitude: number | null;
+};
+
 export type ForecastProbabilityMapProduct = {
   product_id: string;
   theme: ForecastArtifactTheme;
@@ -419,6 +431,10 @@ export type ForecastProbabilityMapProduct = {
   forecast_source_label: string;
   source_run_id: string;
   generation_backend: string;
+  source_artifact_type: ForecastProductSourceArtifactType;
+  grid_shape: ForecastProductGridShape;
+  grid_resolution_degrees: ForecastProductGridResolution;
+  is_low_resolution_fallback: boolean;
   refresh_interval_seconds: number;
   freshness_threshold_hours: number;
   tile_url: string;
@@ -442,6 +458,10 @@ export type ForecastDeterministicMapProduct = {
   forecast_source_label: string;
   source_run_id: string;
   generation_backend: string;
+  source_artifact_type: ForecastProductSourceArtifactType;
+  grid_shape: ForecastProductGridShape;
+  grid_resolution_degrees: ForecastProductGridResolution;
+  is_low_resolution_fallback: boolean;
   refresh_interval_seconds: number;
   freshness_threshold_hours: number;
   tile_url: string;

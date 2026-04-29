@@ -13,20 +13,21 @@ export const FORECAST_VIEW_MODE_OPTIONS: Array<{ value: ForecastViewMode; label:
   { value: "deterministic", label: "Deterministic" },
 ];
 
+const FORECAST_THEME_DISPLAY_ORDER: ForecastArtifactTheme[] = [
+  "onset",
+  "early_dry_spell",
+  "late_dry_spell",
+  "cessation",
+  "rainfall_amount",
+  "rainy_days",
+];
+
 export const DEFAULT_THEMATIC_OPTIONS: ForecastThemeOption[] = [
-  { value: "onset", label: "Onset Date", description: "Seasonal onset timing forecast across Ghana.", enabled: true, requiresSeason: true, requiresSubseason: false },
+  { value: "onset", label: "Onset Date", description: "Seasonal onset timing forecast across Ghana.", enabled: false, requiresSeason: true, requiresSubseason: false },
   {
     value: "early_dry_spell",
     label: "Early-Season Dry Spell",
     description: "Early-season dry-spell duration forecast across Ghana.",
-    enabled: true,
-    requiresSeason: true,
-    requiresSubseason: false,
-  },
-  {
-    value: "cessation",
-    label: "Cessation Date",
-    description: "Seasonal cessation timing forecast across Ghana.",
     enabled: false,
     requiresSeason: true,
     requiresSubseason: false,
@@ -35,6 +36,14 @@ export const DEFAULT_THEMATIC_OPTIONS: ForecastThemeOption[] = [
     value: "late_dry_spell",
     label: "Late-Season Dry Spell",
     description: "Late-season dry-spell duration forecast across Ghana.",
+    enabled: false,
+    requiresSeason: true,
+    requiresSubseason: false,
+  },
+  {
+    value: "cessation",
+    label: "Cessation Date",
+    description: "Seasonal cessation timing forecast across Ghana.",
     enabled: false,
     requiresSeason: true,
     requiresSubseason: false,
@@ -63,8 +72,8 @@ export const DEFAULT_THEMATIC_OPTIONS: ForecastThemeOption[] = [
   requires_subseason: item.requiresSubseason,
   enabled: item.enabled,
   reason: item.enabled ? null : "artifacts_not_generated",
-  seasons: item.requiresSeason ? (["northern_single", "southern_major", "southern_minor"] as SeasonProfile[]) : [],
-  subseasons: item.requiresSubseason ? (["MAM", "AMJ", "MJJ", "JJA", "JAS", "SON"] as CalendarSubseason[]) : [],
+  seasons: item.enabled && item.requiresSeason ? (["northern_single", "southern_major", "southern_minor"] as SeasonProfile[]) : [],
+  subseasons: item.enabled && item.requiresSubseason ? (["MAM", "AMJ", "MJJ", "JJA", "JAS", "SON"] as CalendarSubseason[]) : [],
 }));
 
 const SEASON_LABELS: Record<SeasonProfile, string> = {
@@ -77,8 +86,27 @@ export function thematicTitle(theme: ForecastArtifactTheme) {
   return DEFAULT_THEMATIC_OPTIONS.find((option) => option.theme === theme)?.label ?? "Onset Date";
 }
 
+function forecastThemeOptionMenuBaseLabel(option: ForecastThemeOption) {
+  if (option.theme === "rainfall_amount") {
+    return "Rainfall Total";
+  }
+  return option.label;
+}
+
 export function formatForecastThemeOptionLabel(option: ForecastThemeOption) {
-  return option.enabled ? option.label : `${option.label} (Not ready)`;
+  const unit = option.requires_subseason ? forecastThemeUnitLabel(option.theme) : null;
+  const baseLabel = forecastThemeOptionMenuBaseLabel(option);
+  const label = unit ? `${baseLabel} (${unit})` : baseLabel;
+  return option.enabled ? label : `${label} (Not ready)`;
+}
+
+export function sortForecastThemeOptions(options: ForecastThemeOption[]) {
+  const order = new Map(FORECAST_THEME_DISPLAY_ORDER.map((theme, index) => [theme, index]));
+  return [...options].sort((left, right) => {
+    const leftIndex = order.get(left.theme) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = order.get(right.theme) ?? Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex || left.label.localeCompare(right.label);
+  });
 }
 
 export function forecastThemeAvailabilityReason(option: ForecastThemeOption | null) {
@@ -93,6 +121,16 @@ export function forecastThemeAvailabilityReason(option: ForecastThemeOption | nu
 
 export function seasonProfileLabel(value: SeasonProfile) {
   return SEASON_LABELS[value] ?? value;
+}
+
+export function forecastThemeUnitLabel(theme: ForecastArtifactTheme) {
+  if (theme === "rainfall_amount") {
+    return "mm";
+  }
+  if (theme === "rainy_days") {
+    return "days";
+  }
+  return null;
 }
 
 export function deterministicScaleLabels(theme: ForecastArtifactTheme) {
@@ -140,7 +178,18 @@ export function formatProbabilityPercentage(sample: ForecastProbabilitySample) {
 }
 
 export function formatDeterministicMetricDisplayValue(sample: ForecastDeterministicSample) {
+  if (sample.unit === "day_of_year") {
+    return formatDayOfYearWeekLabel(sample.value, sample.forecast_year);
+  }
   return sample.display_value;
+}
+
+export function formatDayOfYearWeekLabel(value: number, forecastYear: number) {
+  const roundedDay = Math.max(1, Math.round(value));
+  const date = new Date(Date.UTC(forecastYear, 0, roundedDay));
+  const month = date.toLocaleString("en-GB", { month: "short", timeZone: "UTC" });
+  const weekOfMonth = Math.min(4, Math.max(1, Math.ceil(date.getUTCDate() / 7)));
+  return `${month} week ${weekOfMonth}`;
 }
 
 export function formatContinuousValue(value: number, unit: string) {

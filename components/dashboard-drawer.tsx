@@ -31,6 +31,65 @@ function selectionModeLabel(value: DashboardMode) {
   return value === "district" ? "District" : "Region";
 }
 
+function nearestCellLabel(sample: ForecastProbabilitySample | ForecastDeterministicSample) {
+  return `${sample.nearest_latitude.toFixed(3)}, ${sample.nearest_longitude.toFixed(3)}`;
+}
+
+function selectedGeographyContext(
+  selectedGeography: ForecastGeographySelection | null,
+  dashboardMode: DashboardMode,
+  sample: ForecastProbabilitySample | ForecastDeterministicSample | null,
+) {
+  const geographyLabel = dashboardMode === "district" ? "district" : "region";
+
+  if (!selectedGeography) {
+    if (sample) {
+      return {
+        heading: "Forecast point",
+        detail: `Nearest forecast cell ${nearestCellLabel(sample)}`,
+      };
+    }
+
+    return {
+      heading: "Select a geography",
+      detail: `Click a ${geographyLabel} on the map to inspect the nearest forecast grid cell.`,
+    };
+  }
+
+  if (selectedGeography.mode === "district") {
+    return {
+      heading: selectedGeography.geographyName,
+      detail: `${selectionModeLabel(selectedGeography.mode)} in ${selectedGeography.regionName} Region`,
+    };
+  }
+
+  return {
+    heading: selectedGeography.geographyName,
+    detail: selectionModeLabel(selectedGeography.mode),
+  };
+}
+
+function DrawerSummaryStrip({ sample }: { sample: ForecastProbabilitySample | ForecastDeterministicSample }) {
+  const isProbability = isProbabilitySample(sample);
+
+  return (
+    <dl className="drawer-summary-strip" data-testid="drawer-summary-strip">
+      <div className="drawer-summary-metric">
+        <dt>Forecast signal</dt>
+        <dd>{isProbability ? sample.dominant_category_label : sample.theme_label}</dd>
+      </div>
+      <div className="drawer-summary-metric">
+        <dt>{isProbability ? "Confidence" : "Value"}</dt>
+        <dd>{isProbability ? formatProbabilityPercentage(sample) : formatDeterministicMetricDisplayValue(sample)}</dd>
+      </div>
+      <div className="drawer-summary-metric">
+        <dt>Nearest cell</dt>
+        <dd>{nearestCellLabel(sample)}</dd>
+      </div>
+    </dl>
+  );
+}
+
 export function DashboardDrawer({
   dashboardMode,
   viewMode,
@@ -67,24 +126,15 @@ export function DashboardDrawer({
   onRetrySample: () => void;
 }) {
   const geographyLabel = dashboardMode === "district" ? "district" : "region";
+  const geographyContext = selectedGeographyContext(selectedGeography, dashboardMode, sample);
 
   return (
     <aside data-testid="dashboard-drawer" className={isOpen ? "drawer open" : "drawer"}>
       <div className="drawer-header">
         <div>
-          <span className="section-kicker">
-            {viewMode === "probabilistic" ? "Probability forecast selection" : "Deterministic forecast selection"}
-          </span>
-          <h2>{product?.theme_label ?? thematicMode ?? "Forecast selection"}</h2>
-          {sample ? (
-            <p>
-              {selectedGeography
-                ? `${selectedGeography.geographyName} sampled at ${sample.nearest_latitude.toFixed(2)} deg, ${sample.nearest_longitude.toFixed(2)} deg`
-                : `${sample.nearest_latitude.toFixed(2)} deg, ${sample.nearest_longitude.toFixed(2)} deg`}
-            </p>
-          ) : (
-            <p>{`Click a ${geographyLabel} on the map to inspect the nearest forecast grid cell.`}</p>
-          )}
+          <span className="section-kicker">Selection</span>
+          <h2 data-testid="drawer-selected-geography">{geographyContext.heading}</h2>
+          <p>{geographyContext.detail}</p>
         </div>
         <button
           type="button"
@@ -151,6 +201,10 @@ export function DashboardDrawer({
 
       {sample && isProbabilitySample(sample) && product && isProbabilityProduct(product) ? (
         <div className="drawer-scroll">
+          <section className="drawer-section drawer-summary-section">
+            <DrawerSummaryStrip sample={sample} />
+          </section>
+
           <section className="drawer-section">
             <div className="section-heading">
               <div>
@@ -225,16 +279,22 @@ export function DashboardDrawer({
                     <dt>Selected geography</dt>
                     <dd>{selectedGeography.geographyName}</dd>
                   </div>
-                  <div className="metadata-row">
-                    <dt>Representative point</dt>
-                    <dd>{`${selectedGeography.latitude.toFixed(3)}, ${selectedGeography.longitude.toFixed(3)}`}</dd>
-                  </div>
                 </>
               ) : null}
               <div className="metadata-row">
                 <dt>Dominant category</dt>
                 <dd>{sample.dominant_category_label}</dd>
               </div>
+              <div className="metadata-row metadata-row-wide">
+                <dt>Criteria</dt>
+                <dd>{sample.criteria_note}</dd>
+              </div>
+              {selectedGeography ? (
+                <div className="metadata-row">
+                  <dt>Representative point</dt>
+                  <dd>{`${selectedGeography.latitude.toFixed(3)}, ${selectedGeography.longitude.toFixed(3)}`}</dd>
+                </div>
+              ) : null}
               <div className="metadata-row">
                 <dt>Cell latitude</dt>
                 <dd>{sample.nearest_latitude.toFixed(3)}</dd>
@@ -242,10 +302,6 @@ export function DashboardDrawer({
               <div className="metadata-row">
                 <dt>Cell longitude</dt>
                 <dd>{sample.nearest_longitude.toFixed(3)}</dd>
-              </div>
-              <div className="metadata-row metadata-row-wide">
-                <dt>Criteria</dt>
-                <dd>{sample.criteria_note}</dd>
               </div>
             </dl>
           </section>
@@ -279,6 +335,10 @@ export function DashboardDrawer({
 
       {sample && !isProbabilitySample(sample) && product && isDeterministicProduct(product) ? (
         <div className="drawer-scroll">
+          <section className="drawer-section drawer-summary-section">
+            <DrawerSummaryStrip sample={sample} />
+          </section>
+
           <section className="drawer-section">
             <div className="section-heading">
               <div>
@@ -289,7 +349,6 @@ export function DashboardDrawer({
             <article className="advisory-card" data-testid="selection-summary">
               <div className="card-header">
                 <span className="card-eyebrow">{sample.theme_label}</span>
-                <span className="status-dot">{sample.unit}</span>
               </div>
               <h4>{formatDeterministicMetricDisplayValue(sample)}</h4>
               <p>{sample.interpretation}</p>
@@ -334,16 +393,22 @@ export function DashboardDrawer({
                     <dt>Selected geography</dt>
                     <dd>{selectedGeography.geographyName}</dd>
                   </div>
-                  <div className="metadata-row">
-                    <dt>Representative point</dt>
-                    <dd>{`${selectedGeography.latitude.toFixed(3)}, ${selectedGeography.longitude.toFixed(3)}`}</dd>
-                  </div>
                 </>
               ) : null}
               <div className="metadata-row">
                 <dt>Value</dt>
-                <dd>{sample.display_value}</dd>
+                <dd>{formatDeterministicMetricDisplayValue(sample)}</dd>
               </div>
+              <div className="metadata-row metadata-row-wide">
+                <dt>Criteria</dt>
+                <dd>{sample.criteria_note}</dd>
+              </div>
+              {selectedGeography ? (
+                <div className="metadata-row">
+                  <dt>Representative point</dt>
+                  <dd>{`${selectedGeography.latitude.toFixed(3)}, ${selectedGeography.longitude.toFixed(3)}`}</dd>
+                </div>
+              ) : null}
               <div className="metadata-row">
                 <dt>Cell latitude</dt>
                 <dd>{sample.nearest_latitude.toFixed(3)}</dd>
@@ -351,10 +416,6 @@ export function DashboardDrawer({
               <div className="metadata-row">
                 <dt>Cell longitude</dt>
                 <dd>{sample.nearest_longitude.toFixed(3)}</dd>
-              </div>
-              <div className="metadata-row metadata-row-wide">
-                <dt>Criteria</dt>
-                <dd>{sample.criteria_note}</dd>
               </div>
             </dl>
           </section>

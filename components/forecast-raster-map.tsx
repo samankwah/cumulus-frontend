@@ -6,17 +6,25 @@ import type { LatLngBounds, LatLngBoundsExpression, LeafletMouseEvent } from "le
 import L from "leaflet";
 import { CircleMarker, GeoJSON, MapContainer, Pane, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
-import { loadMapData } from "@/lib/map-data";
+import { formatApiError, sampleForecastDeterministic, sampleForecastProbability } from "@/lib/api";
+import { formatDeterministicMetricDisplayValue, formatProbabilityPercentage } from "@/lib/dashboard";
+import { isPointInFeatureCollection, loadMapData } from "@/lib/map-data";
 import type {
+  CalendarSubseason,
   DashboardMode,
   DistrictFeature,
   DistrictFeatureCollection,
+  ForecastArtifactTheme,
+  ForecastDeterministicSample,
   ForecastGeographySelection,
   ForecastMapProduct,
   ForecastPointSelection,
+  ForecastProbabilitySample,
+  ForecastViewMode,
   RegionFeature,
   RegionFeatureCollection,
   RegionMetadata,
+  SeasonProfile,
 } from "@/lib/types";
 
 const GHANA_BOUNDS: LatLngBoundsExpression = [
@@ -26,9 +34,9 @@ const GHANA_BOUNDS: LatLngBoundsExpression = [
 const MAP_PADDING_TOP_LEFT: [number, number] = [36, 48];
 const MAP_PADDING_BOTTOM_RIGHT: [number, number] = [36, 48];
 const DRAWER_CLEARANCE = 28;
-const CHARCOAL_STROKE = "rgba(24, 35, 31, 0.94)";
-const CHARCOAL_STROKE_SOFT = "rgba(24, 35, 31, 0.78)";
-const CHARCOAL_HALO = "rgba(73, 90, 83, 0.46)";
+const MAP_STROKE = "rgba(32, 41, 50, 0.92)";
+const MAP_STROKE_SOFT = "rgba(73, 88, 104, 0.7)";
+const MAP_HALO = "rgba(119, 134, 150, 0.42)";
 
 function FitBoundsOnce() {
   const map = useMap();
@@ -53,8 +61,34 @@ function RasterClickHandler({
 }: {
   onSelectPoint: (latitude: number, longitude: number) => void;
 }) {
+  const [regionFeatures, setRegionFeatures] = useState<RegionFeatureCollection | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateBoundary() {
+      const payload = await loadMapData();
+      if (cancelled) {
+        return;
+      }
+      setRegionFeatures(payload.regionFeatures);
+    }
+
+    void hydrateBoundary();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useMapEvents({
     click(event) {
+      const target = event.originalEvent.target;
+      if (target instanceof Element && target.closest(".leaflet-interactive")) {
+        return;
+      }
+      if (!regionFeatures || !isPointInFeatureCollection(event.latlng.lat, event.latlng.lng, regionFeatures)) {
+        return;
+      }
       onSelectPoint(event.latlng.lat, event.latlng.lng);
     },
   });
@@ -65,6 +99,137 @@ type SelectedLayer = L.Layer & {
   feature?: DistrictFeature | RegionFeature;
   getBounds?: () => LatLngBounds;
 };
+
+type TooltipLayer = L.Layer & {
+  setTooltipContent?: (content: string) => L.Layer;
+  getTooltip?: () => L.Tooltip | undefined;
+};
+
+type HoverSample = ForecastProbabilitySample | ForecastDeterministicSample;
+
+type HoverCacheEntry =
+  | { status: "loading"; promise: Promise<HoverSample> }
+  | { status: "ready"; sample: HoverSample }
+  | { status: "error"; message: string };
+
+type HoverForecastContext = {
+  viewMode: ForecastViewMode;
+  thematicMode: ForecastArtifactTheme | null;
+  seasonProfile: SeasonProfile | null;
+  subseason: CalendarSubseason | null;
+  isProductReady: boolean;
+  productIdentity: string;
+};
+
+type HoverGeography = {
+  geographyKey: string;
+  geographyName: string;
+  geographyType: DashboardMode;
+  latitude: number;
+  longitude: number;
+};
+
+function forecastTileOpacity(product: ForecastMapProduct | null) {
+  if (!product) {
+    return 0.94;
+  }
+  if (product.is_low_resolution_fallback) {
+    return "color_ramp" in product ? 0.68 : 0.62;
+  }
+  return "color_ramp" in product ? 1 : 0.94;
+}
+
+function isProbabilitySample(sample: HoverSample): sample is ForecastProbabilitySample {
+  return "category_probabilities" in sample;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatTooltipPoint(latitude: number, longitude: number) {
+  return `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
+}
+
+function hoverContextKey(context: HoverForecastContext) {
+  return [
+    context.viewMode,
+    context.thematicMode ?? "theme-none",
+    context.seasonProfile ?? "season-none",
+    context.subseason ?? "subseason-none",
+    context.isProductReady ? "ready" : "not-ready",
+    context.productIdentity,
+  ].join(":");
+}
+
+function hoverCacheKey(context: HoverForecastContext, geography: HoverGeography) {
+  return `${hoverContextKey(context)}:${geography.geographyType}:${geography.geographyKey}`;
+}
+
+function renderHoverTooltip(
+  geographyName: string,
+  state:
+    | { status: "loading" }
+    | { status: "unavailable"; message: string }
+    | { status: "ready"; sample: HoverSample; representativePoint: { latitude: number; longitude: number } },
+) {
+  const heading = `<strong>${escapeHtml(geographyName)}</strong>`;
+
+  if (state.status === "loading") {
+    return `${heading}<br/><span class="tooltip-muted">Loading sampled forecast value...</span>`;
+  }
+
+  if (state.status === "unavailable") {
+    return `${heading}<br/><span class="tooltip-muted">${escapeHtml(state.message)}</span>`;
+  }
+
+  const value = isProbabilitySample(state.sample)
+    ? `${state.sample.dominant_category_label} ${formatProbabilityPercentage(state.sample)}`
+    : formatDeterministicMetricDisplayValue(state.sample);
+  const representativePoint = formatTooltipPoint(state.representativePoint.latitude, state.representativePoint.longitude);
+  const nearestCell = formatTooltipPoint(state.sample.nearest_latitude, state.sample.nearest_longitude);
+
+  return [
+    heading,
+    `<span>${escapeHtml(value)}</span>`,
+    `<span class="tooltip-muted">Representative point ${escapeHtml(representativePoint)} to cell ${escapeHtml(nearestCell)}</span>`,
+  ].join("<br/>");
+}
+
+function setLayerTooltipContent(layer: TooltipLayer, content: string) {
+  if (typeof layer.setTooltipContent === "function") {
+    layer.setTooltipContent(content);
+  }
+}
+
+async function fetchHoverSample(context: HoverForecastContext, geography: HoverGeography) {
+  if (!context.thematicMode) {
+    throw new Error("Forecast variable is not selected.");
+  }
+
+  if (context.viewMode === "probabilistic") {
+    return sampleForecastProbability(
+      context.thematicMode,
+      geography.latitude,
+      geography.longitude,
+      context.seasonProfile,
+      context.subseason,
+    );
+  }
+
+  return sampleForecastDeterministic(
+    context.thematicMode,
+    geography.latitude,
+    geography.longitude,
+    context.seasonProfile,
+    context.subseason,
+  );
+}
 
 function findSelectedLayer(
   layerGroup: L.GeoJSON | null,
@@ -173,18 +338,18 @@ function KeepSelectionVisible({
 
 function regionStyle(isSelected: boolean) {
   return {
-    fillColor: isSelected ? "rgba(255, 214, 124, 0.18)" : "rgba(255, 255, 255, 0.08)",
-    color: isSelected ? CHARCOAL_STROKE : CHARCOAL_STROKE_SOFT,
+    fillColor: isSelected ? "rgba(35, 209, 173, 0.2)" : "rgba(255, 255, 255, 0.1)",
+    color: isSelected ? MAP_STROKE : MAP_STROKE_SOFT,
     weight: isSelected ? 2 : 1.25,
     opacity: 1,
-    fillOpacity: isSelected ? 0.18 : 0.05,
+    fillOpacity: isSelected ? 0.2 : 0.05,
   };
 }
 
 function regionHaloStyle(isSelected: boolean) {
   return {
     fillOpacity: 0,
-    color: isSelected ? CHARCOAL_STROKE_SOFT : CHARCOAL_HALO,
+    color: isSelected ? MAP_STROKE_SOFT : MAP_HALO,
     weight: isSelected ? 3 : 2.2,
     opacity: 1,
   };
@@ -192,8 +357,8 @@ function regionHaloStyle(isSelected: boolean) {
 
 function districtStyle(isSelected: boolean) {
   return {
-    fillColor: isSelected ? "rgba(255, 240, 185, 0.18)" : "rgba(255, 255, 255, 0.03)",
-    color: isSelected ? CHARCOAL_STROKE : CHARCOAL_STROKE_SOFT,
+    fillColor: isSelected ? "rgba(35, 209, 173, 0.18)" : "rgba(255, 255, 255, 0.04)",
+    color: isSelected ? MAP_STROKE : MAP_STROKE_SOFT,
     weight: isSelected ? 1.8 : 0.75,
     opacity: 1,
     fillOpacity: isSelected ? 0.18 : 0.03,
@@ -203,17 +368,23 @@ function districtStyle(isSelected: boolean) {
 function ForecastMapOverlay({
   dashboardMode,
   selectedGeography,
+  hoverContext,
   onSelectDistrict,
   onSelectRegion,
 }: {
   dashboardMode: DashboardMode;
   selectedGeography: ForecastGeographySelection | null;
+  hoverContext: HoverForecastContext;
   onSelectDistrict: (geographyKey: string, geographyName: string, regionName: string, latitude: number, longitude: number) => void;
   onSelectRegion: (region: RegionMetadata) => void;
 }) {
   const [districtFeatures, setDistrictFeatures] = useState<DistrictFeatureCollection | null>(null);
   const [regionFeatures, setRegionFeatures] = useState<RegionFeatureCollection | null>(null);
   const geoJsonRef = useRef<L.GeoJSON | null>(null);
+  const hoverCacheRef = useRef<Map<string, HoverCacheEntry>>(new Map());
+  const currentHoverContextKey = hoverContextKey(hoverContext);
+  const activeHoverContextKeyRef = useRef(currentHoverContextKey);
+  activeHoverContextKeyRef.current = currentHoverContextKey;
 
   useEffect(() => {
     let cancelled = false;
@@ -237,6 +408,112 @@ function ForecastMapOverlay({
     return null;
   }
 
+  const bindValueTooltip = (featureLayer: L.Layer, geography: HoverGeography) => {
+    const tooltipLayer = featureLayer as TooltipLayer;
+    const unavailableTooltip = renderHoverTooltip(geography.geographyName, {
+      status: "unavailable",
+      message: "Select a ready forecast product to sample this area.",
+    });
+
+    featureLayer.bindTooltip(unavailableTooltip, {
+      direction: "top",
+      className: "district-tooltip",
+    });
+
+    featureLayer.on("mouseover", () => {
+      const cacheKey = hoverCacheKey(hoverContext, geography);
+      const contextKeyAtRequest = currentHoverContextKey;
+      const isCurrentHoverContext = () => activeHoverContextKeyRef.current === contextKeyAtRequest;
+
+      if (!hoverContext.isProductReady || !hoverContext.thematicMode) {
+        setLayerTooltipContent(tooltipLayer, unavailableTooltip);
+        return;
+      }
+
+      const cached = hoverCacheRef.current.get(cacheKey);
+      if (cached?.status === "ready") {
+        setLayerTooltipContent(
+          tooltipLayer,
+          renderHoverTooltip(geography.geographyName, {
+            status: "ready",
+            sample: cached.sample,
+            representativePoint: { latitude: geography.latitude, longitude: geography.longitude },
+          }),
+        );
+        return;
+      }
+
+      if (cached?.status === "error") {
+        setLayerTooltipContent(
+          tooltipLayer,
+          renderHoverTooltip(geography.geographyName, { status: "unavailable", message: cached.message }),
+        );
+        return;
+      }
+
+      setLayerTooltipContent(tooltipLayer, renderHoverTooltip(geography.geographyName, { status: "loading" }));
+
+      if (cached?.status === "loading") {
+        cached.promise
+          .then((sample) => {
+            if (!isCurrentHoverContext()) {
+              return;
+            }
+            setLayerTooltipContent(
+              tooltipLayer,
+              renderHoverTooltip(geography.geographyName, {
+                status: "ready",
+                sample,
+                representativePoint: { latitude: geography.latitude, longitude: geography.longitude },
+              }),
+            );
+          })
+          .catch((error: unknown) => {
+            if (!isCurrentHoverContext()) {
+              return;
+            }
+            const message = formatApiError(error, hoverContext.viewMode === "deterministic" ? "deterministic" : "probability");
+            setLayerTooltipContent(
+              tooltipLayer,
+              renderHoverTooltip(geography.geographyName, { status: "unavailable", message }),
+            );
+          });
+        return;
+      }
+
+      const promise = fetchHoverSample(hoverContext, geography);
+      hoverCacheRef.current.set(cacheKey, { status: "loading", promise });
+
+      promise
+        .then((sample) => {
+          if (!isCurrentHoverContext()) {
+            return;
+          }
+          hoverCacheRef.current.set(cacheKey, { status: "ready", sample });
+          setLayerTooltipContent(
+            tooltipLayer,
+            renderHoverTooltip(geography.geographyName, {
+              status: "ready",
+              sample,
+              representativePoint: { latitude: geography.latitude, longitude: geography.longitude },
+            }),
+          );
+        })
+        .catch((error: unknown) => {
+          if (!isCurrentHoverContext()) {
+            return;
+          }
+          const message = formatApiError(error, hoverContext.viewMode === "deterministic" ? "deterministic" : "probability");
+          hoverCacheRef.current.set(cacheKey, { status: "error", message });
+          setLayerTooltipContent(
+            tooltipLayer,
+            renderHoverTooltip(geography.geographyName, { status: "unavailable", message }),
+          );
+        });
+    });
+
+  };
+
   return (
     <>
       <KeepSelectionVisible
@@ -253,16 +530,19 @@ function ForecastMapOverlay({
             style={(feature) => regionHaloStyle(feature?.properties.region === selectedGeography?.geographyKey)}
           />
           <GeoJSON
-            key={`forecast-regions-${selectedGeography?.geographyKey ?? "none"}`}
+            key={`forecast-regions-${currentHoverContextKey}-${selectedGeography?.geographyKey ?? "none"}`}
             ref={(layer) => {
               geoJsonRef.current = layer;
             }}
             data={regionFeatures}
             style={(feature) => regionStyle(feature?.properties.region === selectedGeography?.geographyKey)}
             onEachFeature={(feature, layer) => {
-              layer.bindTooltip(`<strong>${feature.properties.region}</strong><br/>Sample region representative point`, {
-                direction: "top",
-                className: "district-tooltip",
+              bindValueTooltip(layer, {
+                geographyKey: feature.properties.region,
+                geographyName: feature.properties.region,
+                geographyType: "region",
+                latitude: feature.properties.latitude,
+                longitude: feature.properties.longitude,
               });
               layer.on("click", (event: LeafletMouseEvent) => {
                 L.DomEvent.stop(event.originalEvent);
@@ -284,16 +564,19 @@ function ForecastMapOverlay({
             style={(feature) => regionHaloStyle(feature?.properties.region === selectedGeography?.geographyKey)}
           />
           <GeoJSON
-            key={`forecast-districts-${selectedGeography?.geographyKey ?? "none"}`}
+            key={`forecast-districts-${currentHoverContextKey}-${selectedGeography?.geographyKey ?? "none"}`}
             ref={(layer) => {
               geoJsonRef.current = layer;
             }}
             data={districtFeatures}
             style={(feature) => districtStyle(feature?.properties.location_id === selectedGeography?.geographyKey)}
             onEachFeature={(feature, layer) => {
-              layer.bindTooltip(`<strong>${feature.properties.display_name}</strong><br/>Sample district representative point`, {
-                direction: "top",
-                className: "district-tooltip",
+              bindValueTooltip(layer, {
+                geographyKey: feature.properties.location_id,
+                geographyName: feature.properties.display_name,
+                geographyType: "district",
+                latitude: feature.properties.latitude,
+                longitude: feature.properties.longitude,
               });
               layer.on("click", (event: LeafletMouseEvent) => {
                 L.DomEvent.stop(event.originalEvent);
@@ -313,7 +596,7 @@ function ForecastMapOverlay({
             interactive={false}
             style={() => ({
               fillOpacity: 0,
-              color: CHARCOAL_STROKE_SOFT,
+              color: MAP_STROKE_SOFT,
               weight: 1,
               opacity: 1,
             })}
@@ -326,6 +609,11 @@ function ForecastMapOverlay({
 
 export function ForecastRasterMap({
   dashboardMode,
+  viewMode,
+  thematicMode,
+  seasonProfile,
+  subseason,
+  isProductReady,
   product,
   selectedPoint,
   selectedGeography,
@@ -334,6 +622,11 @@ export function ForecastRasterMap({
   onSelectRegion,
 }: {
   dashboardMode: DashboardMode;
+  viewMode: ForecastViewMode;
+  thematicMode: ForecastArtifactTheme | null;
+  seasonProfile: SeasonProfile | null;
+  subseason: CalendarSubseason | null;
+  isProductReady: boolean;
   product: ForecastMapProduct | null;
   selectedPoint: ForecastPointSelection | null;
   selectedGeography: ForecastGeographySelection | null;
@@ -359,29 +652,52 @@ export function ForecastRasterMap({
         url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
         opacity={0.42}
       />
-      <Pane name="forecast-raster-pane" style={{ zIndex: 320 }}>
-        {product ? <TileLayer url={product.tile_url} opacity={0.94} pane="forecast-raster-pane" /> : null}
+      <Pane name="forecast-raster-pane" className="forecast-raster-pane" style={{ zIndex: 320 }}>
+        {product ? <TileLayer url={product.tile_url} opacity={forecastTileOpacity(product)} pane="forecast-raster-pane" /> : null}
       </Pane>
       <Pane name="forecast-feature-pane" style={{ zIndex: 470 }}>
         <ForecastMapOverlay
           dashboardMode={dashboardMode}
           selectedGeography={selectedGeography}
+          hoverContext={{
+            viewMode,
+            thematicMode,
+            seasonProfile,
+            subseason,
+            isProductReady,
+            productIdentity: product
+              ? `${product.product_id}:${product.source_run_id}:${product.generated_at}`
+              : "product-none",
+          }}
           onSelectDistrict={onSelectDistrict}
           onSelectRegion={onSelectRegion}
         />
       </Pane>
       <Pane name="forecast-selection-pane" style={{ zIndex: 520 }}>
         {selectedPoint ? (
-          <CircleMarker
-            center={[selectedPoint.latitude, selectedPoint.longitude]}
-            radius={8}
-            pathOptions={{
-              color: "#fff4cd",
-              weight: 2,
-              fillColor: "#12231d",
-              fillOpacity: 0.88,
-            }}
-          />
+          <>
+            <CircleMarker
+              center={[selectedPoint.latitude, selectedPoint.longitude]}
+              radius={17}
+              pathOptions={{
+                color: "rgba(255, 255, 255, 0.56)",
+                weight: 1,
+                fillColor: "#23d1ad",
+                fillOpacity: 0.16,
+                opacity: 0.9,
+              }}
+            />
+            <CircleMarker
+              center={[selectedPoint.latitude, selectedPoint.longitude]}
+              radius={8}
+              pathOptions={{
+                color: "#ffffff",
+                weight: 2,
+                fillColor: "#23d1ad",
+                fillOpacity: 0.88,
+              }}
+            />
+          </>
         ) : null}
       </Pane>
     </MapContainer>

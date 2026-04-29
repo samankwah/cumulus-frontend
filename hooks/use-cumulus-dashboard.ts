@@ -10,7 +10,7 @@ import {
   sampleForecastDeterministic,
   sampleForecastProbability,
 } from "@/lib/api";
-import { DEFAULT_THEMATIC_OPTIONS } from "@/lib/dashboard";
+import { DEFAULT_THEMATIC_OPTIONS, sortForecastThemeOptions } from "@/lib/dashboard";
 import type {
   CalendarSubseason,
   DashboardMode,
@@ -32,7 +32,9 @@ export function useCumulusDashboard() {
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>("region");
   const [viewMode, setViewMode] = useState<ForecastViewMode>("probabilistic");
   const [thematicMode, setThematicMode] = useState<ForecastArtifactTheme | null>(null);
-  const [themeOptions, setThemeOptions] = useState<ForecastThemeOption[]>(DEFAULT_THEMATIC_OPTIONS);
+  const [themeOptions, setThemeOptions] = useState<ForecastThemeOption[]>(sortForecastThemeOptions(DEFAULT_THEMATIC_OPTIONS));
+  const [isThemeOptionsLoading, setIsThemeOptionsLoading] = useState(true);
+  const [themeOptionsError, setThemeOptionsError] = useState<string | null>(null);
   const [seasonProfile, setSeasonProfile] = useState<SeasonProfile | null>(null);
   const [subseason, setSubseason] = useState<CalendarSubseason | null>(null);
   const [product, setProduct] = useState<ForecastMapProduct | null>(null);
@@ -105,14 +107,17 @@ export function useCumulusDashboard() {
   useEffect(() => {
     let ignore = false;
     async function loadOptions() {
+      setIsThemeOptionsLoading(true);
+      setThemeOptionsError(null);
       try {
         const options = await getForecastProductOptions();
         if (ignore || !options.length) {
           return;
         }
-        setThemeOptions(options);
+        const sortedOptions = sortForecastThemeOptions(options);
+        setThemeOptions(sortedOptions);
         setThematicMode((current) => {
-          const matching = current ? options.find((item) => item.theme === current && item.enabled) : null;
+          const matching = current ? sortedOptions.find((item) => item.theme === current && item.enabled) : null;
           if (matching) {
             return matching.theme;
           }
@@ -120,7 +125,13 @@ export function useCumulusDashboard() {
         });
       } catch {
         if (!ignore) {
-          setThemeOptions(DEFAULT_THEMATIC_OPTIONS);
+          setThemeOptions(sortForecastThemeOptions(DEFAULT_THEMATIC_OPTIONS));
+          setThematicMode(null);
+          setThemeOptionsError("Forecast variable options could not be loaded from the backend API. Check API availability.");
+        }
+      } finally {
+        if (!ignore) {
+          setIsThemeOptionsLoading(false);
         }
       }
     }
@@ -286,6 +297,8 @@ export function useCumulusDashboard() {
     thematicMode,
     setThematicMode,
     themeOptions,
+    isThemeOptionsLoading,
+    themeOptionsError,
     activeThemeOption,
     seasonProfile,
     setSeasonProfile,

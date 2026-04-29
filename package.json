@@ -6,7 +6,8 @@
     "node": ">=20 <25"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node ./scripts/start-development.mjs",
+    "dev:next": "next dev",
     "build": "next build",
     "start": "node ./scripts/start-production.mjs",
     "start:server": "node ./scripts/start-production.mjs",

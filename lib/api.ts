@@ -328,6 +328,22 @@ function isForecastProductColorRampStop(value: unknown) {
   return isRecord(value) && typeof value.offset === "number" && typeof value.color === "string";
 }
 
+function isForecastProductSourceArtifactType(value: unknown) {
+  return value === "final_netcdf" || value === "daily_wass2s_derived";
+}
+
+function isForecastProductGridShape(value: unknown) {
+  return isRecord(value) && typeof value.y === "number" && typeof value.x === "number";
+}
+
+function isForecastProductGridResolution(value: unknown) {
+  return (
+    isRecord(value) &&
+    (typeof value.latitude === "number" || value.latitude === null) &&
+    (typeof value.longitude === "number" || value.longitude === null)
+  );
+}
+
 function isForecastProbabilityMapProduct(value: unknown): value is ForecastProbabilityMapProduct {
   return (
     isRecord(value) &&
@@ -345,6 +361,10 @@ function isForecastProbabilityMapProduct(value: unknown): value is ForecastProba
     typeof value.forecast_source_label === "string" &&
     typeof value.source_run_id === "string" &&
     typeof value.generation_backend === "string" &&
+    isForecastProductSourceArtifactType(value.source_artifact_type) &&
+    isForecastProductGridShape(value.grid_shape) &&
+    isForecastProductGridResolution(value.grid_resolution_degrees) &&
+    typeof value.is_low_resolution_fallback === "boolean" &&
     typeof value.refresh_interval_seconds === "number" &&
     typeof value.freshness_threshold_hours === "number" &&
     typeof value.tile_url === "string" &&
@@ -372,6 +392,10 @@ function isForecastDeterministicMapProduct(value: unknown): value is ForecastDet
     typeof value.forecast_source_label === "string" &&
     typeof value.source_run_id === "string" &&
     typeof value.generation_backend === "string" &&
+    isForecastProductSourceArtifactType(value.source_artifact_type) &&
+    isForecastProductGridShape(value.grid_shape) &&
+    isForecastProductGridResolution(value.grid_resolution_degrees) &&
+    typeof value.is_low_resolution_fallback === "boolean" &&
     typeof value.refresh_interval_seconds === "number" &&
     typeof value.freshness_threshold_hours === "number" &&
     typeof value.tile_url === "string" &&

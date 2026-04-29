@@ -20,6 +20,8 @@ export function DashboardShell() {
     thematicMode,
     setThematicMode,
     themeOptions,
+    isThemeOptionsLoading,
+    themeOptionsError,
     activeThemeOption,
     seasonProfile,
     setSeasonProfile,
@@ -43,6 +45,13 @@ export function DashboardShell() {
     selectRegion,
     selectPoint,
   } = useCumulusDashboard();
+  const isProductReady = Boolean(
+    product &&
+      thematicMode &&
+      activeThemeOption?.enabled &&
+      (!activeThemeOption.requires_season || seasonProfile) &&
+      (!activeThemeOption.requires_subseason || subseason),
+  );
 
   return (
     <main className="spa-shell">
@@ -50,6 +59,11 @@ export function DashboardShell() {
         <div className="map-frame" data-testid="map-frame">
           <ForecastRasterMap
             dashboardMode={dashboardMode}
+            viewMode={viewMode}
+            thematicMode={thematicMode}
+            seasonProfile={seasonProfile}
+            subseason={subseason}
+            isProductReady={isProductReady}
             product={product}
             selectedPoint={currentSamplePoint}
             selectedGeography={selectedGeography}
@@ -67,6 +81,8 @@ export function DashboardShell() {
               thematicMode={thematicMode}
               setThematicMode={setThematicMode}
               themeOptions={themeOptions}
+              isThemeOptionsLoading={isThemeOptionsLoading}
+              themeOptionsError={themeOptionsError}
               activeThemeOption={activeThemeOption}
               seasonProfile={seasonProfile}
               setSeasonProfile={setSeasonProfile}

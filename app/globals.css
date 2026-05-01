@@ -357,6 +357,46 @@ button {
   justify-content: flex-end;
 }
 
+.control-status-panel-loading {
+  border-left-color: rgba(35, 209, 173, 0.38);
+  background: rgba(244, 248, 251, 0.72);
+}
+
+.control-skeleton {
+  display: block;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(177, 190, 204, 0.26), rgba(255, 255, 255, 0.74), rgba(177, 190, 204, 0.26));
+  background-size: 220% 100%;
+  box-shadow: var(--neo-inset-soft);
+  animation: skeleton-sweep 1.2s ease-in-out infinite;
+}
+
+.control-skeleton-select {
+  width: min(210px, 72%);
+  height: 18px;
+}
+
+.status-skeleton-kicker {
+  width: 42%;
+  height: 10px;
+}
+
+.status-skeleton-line {
+  width: 78%;
+  height: 14px;
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
+}
+
 .control-field {
   display: grid;
   min-width: 0;
@@ -1102,6 +1142,33 @@ button {
   color: var(--muted);
   font-size: 0.92rem;
   line-height: 1.45;
+}
+
+.legend-skeleton {
+  display: grid;
+  gap: 10px;
+}
+
+.legend-skeleton-bar {
+  height: 18px;
+  width: 100%;
+}
+
+.legend-skeleton-line {
+  height: 12px;
+  width: 62%;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .floating-banner {

@@ -42,6 +42,7 @@ function DropdownField({
   testId,
   displayTestId,
   options,
+  loading = false,
 }: {
   label: string;
   placeholder: string;
@@ -52,6 +53,7 @@ function DropdownField({
   testId: string;
   displayTestId?: string;
   options: DropdownOption[];
+  loading?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const labelId = useId();
@@ -137,8 +139,15 @@ function DropdownField({
           disabled={disabled}
           onClick={() => setIsOpen((current) => !current)}
         >
-          <span className="control-select-value" data-testid={displayTestId}>
-            {displayLabel}
+          <span className={`control-select-value${loading ? " control-select-value-loading" : ""}`} data-testid={displayTestId}>
+            {loading ? (
+              <>
+                <span className="control-skeleton control-skeleton-select" data-testid={`${testId}-skeleton`} aria-hidden="true" />
+                <span className="sr-only">{displayLabel}</span>
+              </>
+            ) : (
+              displayLabel
+            )}
           </span>
           <span className="control-chevron" aria-hidden="true">
             <svg viewBox="0 0 12 8" focusable="false">
@@ -235,6 +244,24 @@ function subseasonOptionLabel(option: CalendarSubseason, activeThemeOption: Fore
   return unit ? `${option} (${unit})` : option;
 }
 
+function LegendSkeleton() {
+  return (
+    <div className="legend-skeleton" data-testid="legend-skeleton" aria-hidden="true">
+      <span className="control-skeleton legend-skeleton-bar" />
+      <span className="control-skeleton legend-skeleton-line" />
+    </div>
+  );
+}
+
+function ProductStatusSkeleton() {
+  return (
+    <section className="control-status-panel control-status-panel-loading" data-testid="product-status-skeleton" aria-hidden="true">
+      <span className="control-skeleton status-skeleton-kicker" />
+      <span className="control-skeleton status-skeleton-line" />
+    </section>
+  );
+}
+
 export function FloatingControls({
   dashboardMode,
   setDashboardMode,
@@ -291,6 +318,7 @@ export function FloatingControls({
       ? "Variable options unavailable"
       : "All Variables";
   const shouldShowSeasonSelect = !activeThemeOption || activeThemeOption.requires_season;
+  const shouldShowLoadingSkeleton = isThemeOptionsLoading || (isProductLoading && !productError);
   const probabilityPercentages = probabilitySampleLookup(sample);
   const legendClassName = isDeterministicProduct(product)
     ? "floating-legend floating-legend-deterministic"
@@ -299,7 +327,9 @@ export function FloatingControls({
       : "floating-legend";
   const forecastLegend = (
     <>
-      {!product ? (
+      {shouldShowLoadingSkeleton ? (
+        <LegendSkeleton />
+      ) : !product ? (
         <div className="continuous-legend-empty" data-testid="legend-empty">
           Select a variable and season to load a forecast legend.
         </div>
@@ -431,6 +461,7 @@ export function FloatingControls({
               testId="theme-select"
               displayTestId="theme-select-display"
               disabled={themeSelectUnavailable}
+              loading={isThemeOptionsLoading}
               options={
                 themeSelectUnavailable
                   ? []
@@ -441,7 +472,32 @@ export function FloatingControls({
                     }))
               }
             />
-            {shouldShowSeasonSelect ? (
+            {isThemeOptionsLoading ? (
+              <>
+                <DropdownField
+                  label="Season"
+                  placeholder="Loading seasons..."
+                  value=""
+                  onChange={() => undefined}
+                  testId="season-select"
+                  displayTestId="season-select-display"
+                  disabled
+                  loading
+                  options={[]}
+                />
+                <DropdownField
+                  label="Sub-season"
+                  placeholder="Loading sub-seasons..."
+                  value=""
+                  onChange={() => undefined}
+                  testId="subseason-select"
+                  displayTestId="subseason-select-display"
+                  disabled
+                  loading
+                  options={[]}
+                />
+              </>
+            ) : shouldShowSeasonSelect ? (
               <DropdownField
                 label="Season"
                 placeholder="All Seasons"
@@ -488,6 +544,12 @@ export function FloatingControls({
               </p>
             ) : null}
           </div>
+
+          {shouldShowLoadingSkeleton ? (
+            <div className="control-group">
+              <ProductStatusSkeleton />
+            </div>
+          ) : null}
 
           {productError ? (
             <div className="control-group">

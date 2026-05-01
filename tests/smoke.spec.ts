@@ -104,8 +104,8 @@ function probabilityProduct(
     source_run_id: `${theme}-probability-run`,
     generation_backend: "bridge_generated",
     source_artifact_type: isFallback ? "daily_wass2s_derived" : "final_netcdf",
-    grid_shape: isFallback ? { y: 5, x: 6 } : { y: 46, x: 50 },
-    grid_resolution_degrees: isFallback ? { latitude: 1.5, longitude: 1.0 } : { latitude: 0.1, longitude: 0.1 },
+    grid_shape: isFallback ? { y: 5, x: 6 } : { y: 23, x: 16 },
+    grid_resolution_degrees: isFallback ? { latitude: 1.5, longitude: 1.0 } : { latitude: 0.4, longitude: 0.4 },
     is_low_resolution_fallback: isFallback,
     refresh_interval_seconds: 1800,
     freshness_threshold_hours: 18,
@@ -140,8 +140,8 @@ function deterministicProduct(
     source_run_id: `${theme}-deterministic-run`,
     generation_backend: "bridge_generated",
     source_artifact_type: isFallback ? "daily_wass2s_derived" : "final_netcdf",
-    grid_shape: isFallback ? { y: 5, x: 6 } : { y: 46, x: 50 },
-    grid_resolution_degrees: isFallback ? { latitude: 1.5, longitude: 1.0 } : { latitude: 0.1, longitude: 0.1 },
+    grid_shape: isFallback ? { y: 5, x: 6 } : { y: 23, x: 16 },
+    grid_resolution_degrees: isFallback ? { latitude: 1.5, longitude: 1.0 } : { latitude: 0.4, longitude: 0.4 },
     is_low_resolution_fallback: isFallback,
     refresh_interval_seconds: 1800,
     freshness_threshold_hours: 18,
@@ -324,11 +324,16 @@ test("variable selector shows loading state while forecast options load", async 
 
   await expect(page.getByTestId("theme-select")).toBeDisabled();
   await expect(page.getByTestId("theme-select-display")).toHaveText("Loading variables...");
+  await expect(page.getByTestId("theme-select-skeleton")).toBeVisible();
+  await expect(page.getByTestId("season-select-skeleton")).toBeVisible();
+  await expect(page.getByTestId("subseason-select-skeleton")).toBeVisible();
+  await expect(page.getByTestId("legend-skeleton")).toBeVisible();
 
   releaseOptions();
 
   await expect(page.getByTestId("theme-select")).toBeEnabled();
   await expect(page.getByTestId("theme-select-display")).toHaveText("All Variables");
+  await expect(page.getByTestId("theme-select-skeleton")).toHaveCount(0);
 });
 
 test("variable selector reports backend availability when forecast options fail", async ({ page }) => {
@@ -346,6 +351,29 @@ test("variable selector reports backend availability when forecast options fail"
   await expect(page.getByTestId("theme-select-display")).toHaveText("Variable options unavailable");
   await expect(page.getByTestId("theme-select").locator("option")).toHaveText(["Variable options unavailable"]);
   await expect(page.getByTestId("theme-options-status-note")).toContainText("backend API");
+  await expect(page.getByTestId("theme-select-skeleton")).toHaveCount(0);
+  await expect(page.getByTestId("legend-skeleton")).toHaveCount(0);
+});
+
+test("onset season selector includes southern minor when backend reports it ready", async ({ page }) => {
+  await page.route(`${API_BASE_URL}/forecast/products/options`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(forecastOptions()),
+    });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("theme-select").selectOption("onset");
+
+  await expect(page.getByTestId("season-select")).toBeVisible();
+  await expect(page.getByTestId("season-select").locator("option")).toHaveText([
+    "All Seasons",
+    "Northern Single Season",
+    "Southern Major Season",
+    "Southern Minor Season",
+  ]);
 });
 
 test("sub-season selector offers high-resolution AMJ and JJA when backend reports them ready", async ({ page }) => {

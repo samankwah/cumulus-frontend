@@ -1716,10 +1716,16 @@ button {
   }
 
   .chrome-layer {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 12px;
     padding: 14px;
   }
 
   .floating-controls {
+    width: 100%;
     max-width: none;
     max-height: calc(100dvh - 220px);
     overflow: auto;
@@ -1732,9 +1738,11 @@ button {
   }
 
   .floating-legend {
-    left: 14px;
-    bottom: 14px;
-    width: calc(100% - 28px);
+    position: static;
+    left: auto;
+    bottom: auto;
+    margin-top: auto;
+    width: 100%;
     max-width: none;
     padding: 14px;
   }
@@ -1749,9 +1757,13 @@ button {
   }
 
   .forecast-menu,
-  .segmented {
+  .segmented:not(.segmented-dual) {
     grid-template-columns: 1fr;
     border-radius: 24px;
+  }
+
+  .segmented-dual {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .floating-banner {
@@ -1813,5 +1825,165 @@ button {
 
   .status-dot {
     justify-self: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .chrome-layer {
+    gap: 10px;
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+  }
+
+  .floating-controls {
+    max-height: min(56dvh, calc(100dvh - 168px));
+  }
+
+  .control-card {
+    gap: 14px;
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  .brand-block h1 {
+    font-size: 1.72rem;
+  }
+
+  .eyebrow,
+  .section-kicker,
+  .card-eyebrow {
+    font-size: 0.62rem;
+  }
+
+  .control-group {
+    gap: 10px;
+  }
+
+  .control-group-primary {
+    gap: 12px;
+  }
+
+  .control-label {
+    font-size: 0.76rem;
+  }
+
+  .segmented {
+    gap: 6px;
+    padding: 6px;
+    border-radius: 20px;
+  }
+
+  .segmented button,
+  .ghost-button {
+    min-width: 0;
+    padding: 11px 10px;
+    font-size: 0.94rem;
+  }
+
+  .control-select-shell,
+  .control-select-button,
+  .control-select-shell select {
+    min-height: 52px;
+  }
+
+  .control-select-shell {
+    padding-right: 42px;
+    border-radius: 18px;
+  }
+
+  .control-select-value {
+    min-height: 52px;
+    padding: 12px 42px 12px 14px;
+    font-size: 0.94rem;
+  }
+
+  .control-chevron {
+    right: 14px;
+  }
+
+  .control-select-menu {
+    max-height: min(280px, 40dvh);
+    border-radius: 18px;
+  }
+
+  .floating-legend {
+    width: 100%;
+    padding: 12px;
+    border-radius: 20px;
+  }
+
+  .floating-legend-probability,
+  .floating-legend-deterministic {
+    width: 100%;
+  }
+
+  .probability-scale-grid {
+    gap: 7px;
+  }
+
+  .probability-scale-track {
+    height: 16px;
+  }
+
+  .probability-scale-axis span {
+    font-size: 0.48rem;
+  }
+
+  .probability-scale-label {
+    font-size: 0.54rem;
+  }
+
+  .deterministic-colorbar-ticks span {
+    font-size: 0.6rem;
+  }
+
+  .leaflet-control-attribution {
+    margin: 0 12px 116px 0 !important;
+    padding: 4px 10px !important;
+  }
+
+  .drawer {
+    bottom: 0;
+    max-height: min(76dvh, 720px);
+    border-radius: 24px 24px 0 0;
+  }
+
+  .drawer-header {
+    padding: 18px 16px 14px;
+  }
+
+  .drawer-header h2 {
+    font-size: 1.55rem;
+  }
+
+  .drawer-scroll {
+    padding: 12px 16px 18px;
+  }
+
+  .drawer-empty,
+  .empty-card {
+    margin: 16px;
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .chart-card,
+  .advisory-card,
+  .metadata-panel {
+    padding: 18px;
+    border-radius: 22px;
+  }
+}
+
+@media (max-width: 340px) {
+  .segmented-dual {
+    grid-template-columns: 1fr;
+  }
+
+  .floating-controls {
+    max-height: min(54dvh, calc(100dvh - 160px));
   }
 }

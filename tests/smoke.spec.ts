@@ -305,6 +305,62 @@ function forecastOptionsWithRainfallSubseasons(subseasons: string[]) {
   );
 }
 
+test("forecast controls and legend fit phone viewports without horizontal overflow", async ({ page }) => {
+  await page.route(`${API_BASE_URL}/forecast/products/options`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(forecastOptions()) });
+  });
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 360, height: 740 },
+    { width: 768, height: 1024 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("theme-select-display")).toHaveText("All Variables");
+    await expect(page.getByTestId("legend-empty")).toBeVisible();
+
+    const metrics = await page.evaluate(() => {
+      const controls = document.querySelector<HTMLElement>(".floating-controls");
+      const legend = document.querySelector<HTMLElement>(".floating-legend");
+      const forecastButtons = Array.from(document.querySelectorAll<HTMLElement>('[aria-label="Forecast view"] button'));
+
+      if (!controls || !legend || forecastButtons.length < 2) {
+        throw new Error("Responsive map chrome is missing.");
+      }
+
+      const viewportWidth = document.documentElement.clientWidth;
+      const viewportHeight = window.innerHeight;
+      const controlRect = controls.getBoundingClientRect();
+      const legendRect = legend.getBoundingClientRect();
+      const firstButtonRect = forecastButtons[0].getBoundingClientRect();
+      const secondButtonRect = forecastButtons[1].getBoundingClientRect();
+
+      return {
+        horizontalOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - viewportWidth,
+        controlLeft: controlRect.left,
+        controlRight: controlRect.right,
+        controlBottom: controlRect.bottom,
+        legendTop: legendRect.top,
+        legendBottom: legendRect.bottom,
+        viewportWidth,
+        viewportHeight,
+        forecastButtonsShareRow: Math.abs(firstButtonRect.top - secondButtonRect.top) <= 2,
+      };
+    });
+
+    expect(metrics.horizontalOverflow, `${viewport.width}x${viewport.height} should not overflow horizontally`).toBeLessThanOrEqual(1);
+    expect(metrics.controlLeft, `${viewport.width}x${viewport.height} controls should stay inside left edge`).toBeGreaterThanOrEqual(0);
+    expect(metrics.controlRight, `${viewport.width}x${viewport.height} controls should stay inside right edge`).toBeLessThanOrEqual(metrics.viewportWidth);
+    expect(metrics.legendBottom, `${viewport.width}x${viewport.height} legend should stay inside the viewport`).toBeLessThanOrEqual(metrics.viewportHeight);
+    expect(metrics.controlBottom, `${viewport.width}x${viewport.height} controls should not collide with the legend`).toBeLessThanOrEqual(metrics.legendTop - 8);
+
+    if (viewport.width >= 360) {
+      expect(metrics.forecastButtonsShareRow, `${viewport.width}x${viewport.height} dual controls should stay compact`).toBeTruthy();
+    }
+  }
+});
+
 test("variable selector shows loading state while forecast options load", async ({ page }) => {
   let releaseOptions!: () => void;
   const pendingOptions = new Promise<void>((resolve) => {

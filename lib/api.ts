@@ -13,7 +13,27 @@ import type {
   SeasonalProbabilityMapProduct,
 } from "@/lib/types";
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
+const PRODUCTION_API_BASE_URL = "https://cumulus-backend.vercel.app";
+const IMMUTABLE_BACKEND_DEPLOYMENT_HOST_PATTERN =
+  /^cumulus-backend-[a-z0-9]+-0243999631a-5912s-projects\.vercel\.app$/;
+
+function getApiBaseUrl() {
+  const configuredUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
+  if (!configuredUrl) {
+    return "";
+  }
+  try {
+    const url = new URL(configuredUrl);
+    if (IMMUTABLE_BACKEND_DEPLOYMENT_HOST_PATTERN.test(url.hostname)) {
+      return PRODUCTION_API_BASE_URL;
+    }
+  } catch {
+    return configuredUrl;
+  }
+  return configuredUrl;
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 type JsonRecord = Record<string, unknown>;
 

@@ -68,11 +68,11 @@ export function RainfallChart({
               }
               formatter={(value: number, name: string) => [`${value.toFixed(1)} mm`, name]}
               contentStyle={{
-                border: "1px solid rgba(255, 255, 255, 0.58)",
+                border: "1px solid rgba(255, 255, 255, 0.56)",
                 borderRadius: 18,
-                background: "rgba(238, 243, 247, 0.96)",
+                background: "var(--map-panel-surface-strong)",
                 color: "rgba(32, 41, 50, 0.96)",
-                boxShadow: "8px 10px 20px rgba(139, 153, 170, 0.28), -7px -7px 16px rgba(255, 255, 255, 0.64)",
+                boxShadow: "var(--map-card-shadow)",
               }}
             />
             <Legend wrapperStyle={{ color: "rgba(32, 41, 50, 0.72)" }} />

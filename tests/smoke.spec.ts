@@ -361,6 +361,162 @@ test("forecast controls and legend fit phone viewports without horizontal overfl
   }
 });
 
+test("mobile controls collapse above the legend and drawer fills the map", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route(`${API_BASE_URL}/forecast/products/options`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(forecastOptions()) });
+  });
+  await page.route(`${API_BASE_URL}/forecast/probability/active*`, async (route) => {
+    const url = new URL(route.request().url());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(probabilityProduct(themeFromUrl(route.request().url()), url.searchParams.get("season_profile"), url.searchParams.get("subseason"))),
+    });
+  });
+  await page.route(`${API_BASE_URL}/forecast/probability/sample*`, async (route) => {
+    const url = new URL(route.request().url());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(samplePayload(themeFromUrl(route.request().url()), "probability", url.searchParams.get("season_profile"), url.searchParams.get("subseason"))),
+    });
+  });
+  await page.route(`${API_BASE_URL}/forecast/probability/tiles/**`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("legend-empty")).toBeVisible();
+  await expect(page.locator(".floating-controls")).toBeVisible();
+  await expect(page.locator(".leaflet-control-attribution")).not.toBeVisible();
+  const initialToggleMetrics = await page.evaluate(() => {
+    const toggle = document.querySelector<HTMLElement>('[data-testid="mobile-controls-toggle"]');
+    const controls = document.querySelector<HTMLElement>(".floating-controls");
+    const legend = document.querySelector<HTMLElement>(".floating-legend");
+    if (!toggle || !controls || !legend) {
+      throw new Error("Mobile toggle, controls, or legend is missing.");
+    }
+    const controlsRect = controls.getBoundingClientRect();
+    const toggleRect = toggle.getBoundingClientRect();
+    return {
+      toggleTop: toggleRect.top,
+      toggleBottom: toggleRect.bottom,
+      controlsTop: controlsRect.top,
+      controlsBottom: controlsRect.bottom,
+      toggleInsideControls: controls.contains(toggle),
+      toggleInsideLegend: legend.contains(toggle),
+    };
+  });
+  expect(initialToggleMetrics.toggleInsideLegend).toBeFalsy();
+  expect(initialToggleMetrics.toggleInsideControls).toBeTruthy();
+  expect(initialToggleMetrics.toggleBottom).toBeLessThanOrEqual(initialToggleMetrics.controlsBottom);
+
+  await page.getByTestId("theme-select-button").click();
+  const variableMenuMetrics = await page.evaluate(() => {
+    const menu = document.querySelector<HTMLElement>(".control-select-menu");
+    const controls = document.querySelector<HTMLElement>(".floating-controls");
+    const legend = document.querySelector<HTMLElement>(".floating-legend");
+    if (!menu || !controls || !legend) {
+      throw new Error("Mobile controls menu is missing.");
+    }
+    const controlRect = controls.getBoundingClientRect();
+    const legendRect = legend.getBoundingClientRect();
+    return {
+      optionCount: menu.querySelectorAll("button").length,
+      hasInternalScroll: menu.scrollHeight > menu.clientHeight + 1,
+      controlBottom: controlRect.bottom,
+      legendTop: legendRect.top,
+      horizontalOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth,
+    };
+  });
+  expect(variableMenuMetrics.optionCount).toBe(6);
+  expect(variableMenuMetrics.hasInternalScroll).toBeFalsy();
+  expect(variableMenuMetrics.controlBottom).toBeLessThanOrEqual(variableMenuMetrics.legendTop - 8);
+  expect(variableMenuMetrics.horizontalOverflow).toBeLessThanOrEqual(1);
+
+  await page.getByRole("option", { name: "Onset Date" }).click();
+  await page.getByTestId("season-select-button").click();
+  const seasonMenuMetrics = await page.evaluate(() => {
+    const menu = document.querySelector<HTMLElement>(".control-select-menu");
+    if (!menu) {
+      throw new Error("Season menu is missing.");
+    }
+    return {
+      optionCount: menu.querySelectorAll("button").length,
+      hasInternalScroll: menu.scrollHeight > menu.clientHeight + 1,
+    };
+  });
+  expect(seasonMenuMetrics.optionCount).toBe(3);
+  expect(seasonMenuMetrics.hasInternalScroll).toBeFalsy();
+
+  await page.getByRole("option", { name: "Southern Major Season" }).click();
+  await expect(page.getByTestId("probability-legend")).toContainText("Late");
+  await expect(page.locator(".floating-controls")).toBeVisible();
+  await expect(page.getByTestId("mobile-control-content")).not.toBeVisible();
+  await expect(page.locator(".floating-legend")).toBeVisible();
+
+  await page.getByTestId("mobile-controls-toggle").click();
+  await expect(page.getByTestId("mobile-control-content")).toBeVisible();
+  const reopenedMetrics = await page.evaluate(() => {
+    const controls = document.querySelector<HTMLElement>(".floating-controls");
+    const legend = document.querySelector<HTMLElement>(".floating-legend");
+    if (!controls || !legend) {
+      throw new Error("Mobile chrome is missing after reopening controls.");
+    }
+    return {
+      controlBottom: controls.getBoundingClientRect().bottom,
+      legendTop: legend.getBoundingClientRect().top,
+    };
+  });
+  expect(reopenedMetrics.controlBottom).toBeLessThanOrEqual(reopenedMetrics.legendTop - 8);
+
+  await page.getByTestId("theme-select-button").click();
+  await page.getByRole("option", { name: "Rainfall Total (mm)" }).click();
+  await page.getByTestId("subseason-select-button").click();
+  const subseasonMenuMetrics = await page.evaluate(() => {
+    const menu = document.querySelector<HTMLElement>(".control-select-menu");
+    if (!menu) {
+      throw new Error("Sub-season menu is missing.");
+    }
+    return {
+      optionCount: menu.querySelectorAll("button").length,
+      hasInternalScroll: menu.scrollHeight > menu.clientHeight + 1,
+    };
+  });
+  expect(subseasonMenuMetrics.optionCount).toBe(6);
+  expect(subseasonMenuMetrics.hasInternalScroll).toBeFalsy();
+
+  await page.getByRole("option", { name: "MAM (mm)" }).click();
+  await expect(page.getByTestId("probability-legend")).toContainText("ABOVE-AVERAGE");
+  await expect(page.locator(".floating-controls")).toBeVisible();
+  await expect(page.getByTestId("mobile-control-content")).not.toBeVisible();
+
+  await clickRasterMap(page);
+  const drawer = page.getByTestId("dashboard-drawer");
+  await expect(drawer).toHaveClass(/open/, { timeout: 30_000 });
+  await expect(page.getByTestId("drawer-close")).toBeVisible();
+  await page.waitForTimeout(260);
+  const drawerMetrics = await drawer.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      top: rect.top,
+      left: rect.left,
+      right: rect.right,
+      bottom: rect.bottom,
+      viewportWidth: document.documentElement.clientWidth,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(drawerMetrics.top).toBeLessThanOrEqual(1);
+  expect(drawerMetrics.left).toBeLessThanOrEqual(1);
+  expect(drawerMetrics.right).toBeGreaterThanOrEqual(drawerMetrics.viewportWidth - 1);
+  expect(drawerMetrics.bottom).toBeGreaterThanOrEqual(drawerMetrics.viewportHeight - 1);
+
+  await page.getByTestId("drawer-close").click();
+  await expect(drawer).not.toHaveClass(/open/);
+});
+
 test("variable selector shows loading state while forecast options load", async ({ page }) => {
   let releaseOptions!: () => void;
   const pendingOptions = new Promise<void>((resolve) => {
@@ -601,16 +757,19 @@ test("probability tab uses forecast artifact endpoints and opens a sampled drawe
   await expect(page.getByTestId("drawer-selected-geography")).not.toHaveText(/Select a geography|Forecast point/);
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("Forecast signal");
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("Confidence");
-  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Nearest cell");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Advisory area");
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("Late");
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("72%");
   await expect(page.getByTestId("selection-summary")).toContainText("Onset Date");
   await expect(page.getByTestId("selection-summary")).toContainText("Late");
   await expect(page.getByTestId("selection-summary")).toContainText("72%");
-  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Selection mode");
-  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Region");
-  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Cell latitude");
-  await expect(page.getByTestId("drawer-publication-grid")).toContainText("Cumulus Bridge Product");
+  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Audience");
+  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("advisory teams");
+  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Forecast period");
+  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Dissemination use");
+  await expect(page.getByTestId("dashboard-drawer")).not.toContainText("Nearest cell");
+  await expect(page.getByTestId("dashboard-drawer")).not.toContainText("Cell latitude");
+  await expect(page.getByTestId("dashboard-drawer")).not.toContainText("Freshness");
   expect(sampleRequests.length).toBeGreaterThan(0);
   const probabilityTooltip = await hoverRasterMap(page);
   await expect(probabilityTooltip).not.toContainText("Sample district representative point");
@@ -634,7 +793,7 @@ test("probability tab uses forecast artifact endpoints and opens a sampled drawe
   await page.getByTestId("dashboard-mode-region").click();
   await clickRasterMap(page);
   await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/, { timeout: 30_000 });
-  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Region");
+  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("advisory teams");
 });
 
 test("deterministic tab uses forecast artifact endpoints and renders continuous legend values", async ({ page }) => {
@@ -719,13 +878,15 @@ test("deterministic tab uses forecast artifact endpoints and renders continuous 
   await expect(page.getByTestId("drawer-selected-geography")).not.toHaveText(/Select a geography|Forecast point/);
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("Forecast signal");
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("Value");
-  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Nearest cell");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Advisory area");
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("Mar week 4");
   await expect(page.getByTestId("selection-summary")).toContainText("Onset Date");
   await expect(page.getByTestId("selection-summary")).toContainText("Mar week 4");
   await expect(page.getByTestId("selection-summary")).not.toContainText("day_of_year");
-  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Region");
+  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Audience");
+  await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Forecast period");
   await expect(page.getByTestId("drawer-metadata-grid")).toContainText("Mar week 4");
+  await expect(page.getByTestId("dashboard-drawer")).not.toContainText("Published product");
   const deterministicTooltip = await hoverRasterMap(page);
   await expect(deterministicTooltip).not.toContainText("Sample district representative point");
   await expect(deterministicTooltip).not.toContainText("Sample region representative point");

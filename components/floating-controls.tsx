@@ -132,6 +132,7 @@ function DropdownField({
         <button
           type="button"
           className="control-select-button"
+          data-testid={`${testId}-button`}
           aria-labelledby={labelId}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
@@ -307,9 +308,17 @@ export function FloatingControls({
   isRefreshing: boolean;
   onRetryProduct: () => void;
 }) {
+  const controlsId = useId();
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
   const deterministicStops = isDeterministicProduct(product) ? product.color_ramp : [];
   const deterministicTicks = isDeterministicProduct(product) ? product.legend_ticks : [];
   const deterministicUnit = isDeterministicProduct(product) ? deterministicUnitLabel(product) : null;
+  const isForecastSelectionComplete = Boolean(
+    thematicMode &&
+      activeThemeOption?.enabled &&
+      (!activeThemeOption.requires_season || seasonProfile) &&
+      (!activeThemeOption.requires_subseason || subseason),
+  );
   const availabilityReason = forecastThemeAvailabilityReason(activeThemeOption);
   const themeSelectUnavailable = isThemeOptionsLoading || Boolean(themeOptionsError);
   const themeSelectPlaceholder = isThemeOptionsLoading
@@ -325,6 +334,15 @@ export function FloatingControls({
     : isProbabilityProduct(product)
       ? "floating-legend floating-legend-probability"
       : "floating-legend";
+
+  useEffect(() => {
+    if (isForecastSelectionComplete) {
+      setIsControlPanelOpen(false);
+      return;
+    }
+    setIsControlPanelOpen(true);
+  }, [isForecastSelectionComplete, seasonProfile, subseason, thematicMode, viewMode]);
+
   const forecastLegend = (
     <>
       {shouldShowLoadingSkeleton ? (
@@ -365,7 +383,6 @@ export function FloatingControls({
         </div>
       ) : (
         <div className="deterministic-colorbar" data-testid="deterministic-legend">
-          {deterministicUnit ? <span className="deterministic-colorbar-unit">{deterministicUnit}</span> : null}
           <div className="deterministic-colorbar-shell">
             <div
               className="deterministic-colorbar-track"
@@ -374,13 +391,16 @@ export function FloatingControls({
               }}
             />
           </div>
-          <div
-            className="deterministic-colorbar-ticks"
-            style={{ gridTemplateColumns: `repeat(${deterministicTicks.length}, minmax(0, 1fr))` }}
-          >
-            {deterministicTicks.map((tick) => (
-              <span key={tick}>{deterministicTickLabel(product, tick)}</span>
-            ))}
+          <div className={deterministicUnit ? "deterministic-colorbar-axis with-unit" : "deterministic-colorbar-axis"}>
+            {deterministicUnit ? <span className="deterministic-colorbar-unit">{deterministicUnit}</span> : null}
+            <div
+              className="deterministic-colorbar-ticks"
+              style={{ gridTemplateColumns: `repeat(${deterministicTicks.length}, minmax(0, 1fr))` }}
+            >
+              {deterministicTicks.map((tick) => (
+                <span key={tick}>{deterministicTickLabel(product, tick)}</span>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -388,198 +408,212 @@ export function FloatingControls({
   );
 
   return (
-    <>
+    <div className={`map-mobile-chrome ${isControlPanelOpen ? "controls-open" : "controls-collapsed"}`}>
       <div className="floating-controls">
         <div className="control-card">
-          <div className="brand-block">
-            <span className="eyebrow">
-              {viewMode === "probabilistic"
-                ? "Cumulus probability forecast artifact"
-                : "Cumulus deterministic forecast artifact"}
-            </span>
-            <h1>Forecast Map</h1>
-          </div>
+          <button
+            type="button"
+            className="mobile-controls-toggle"
+            data-testid="mobile-controls-toggle"
+            aria-controls={controlsId}
+            aria-expanded={isControlPanelOpen}
+            aria-label={isControlPanelOpen ? "Hide forecast controls" : "Show forecast controls"}
+            onClick={() => setIsControlPanelOpen((current) => !current)}
+          >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M6 10 12 4l6 6" />
+              <path d="M6 16l6-6 6 6" />
+            </svg>
+          </button>
+          <div className="control-card-content" id={controlsId} data-testid="mobile-control-content">
+            <div className="brand-block">
+              <span className="eyebrow">
+                {viewMode === "probabilistic" ? "Probability forecast artifact" : "Deterministic forecast artifact"}
+              </span>
+              <h1>Forecast Map</h1>
+            </div>
 
-          <div className="control-group">
-            <div className="control-field">
-              <span className="control-label">Forecast view</span>
-              <div className="segmented segmented-dual" role="tablist" aria-label="Forecast view">
-                {FORECAST_VIEW_MODE_OPTIONS.map((option) => (
+            <div className="control-group">
+              <div className="control-field">
+                <span className="control-label">Forecast view</span>
+                <div className="segmented segmented-dual" role="tablist" aria-label="Forecast view">
+                  {FORECAST_VIEW_MODE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={viewMode === option.value}
+                      className={viewMode === option.value ? "active" : ""}
+                      data-testid={`view-mode-${option.value}`}
+                      onClick={() => setViewMode(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="control-group">
+              <div className="control-field">
+                <span className="control-label">Geography</span>
+                <div className="segmented segmented-dual" role="tablist" aria-label="Forecast geography">
                   <button
-                    key={option.value}
                     type="button"
                     role="tab"
-                    aria-selected={viewMode === option.value}
-                    className={viewMode === option.value ? "active" : ""}
-                    data-testid={`view-mode-${option.value}`}
-                    onClick={() => setViewMode(option.value)}
+                    aria-selected={dashboardMode === "region"}
+                    className={dashboardMode === "region" ? "active" : ""}
+                    data-testid="dashboard-mode-region"
+                    onClick={() => setDashboardMode("region")}
                   >
-                    {option.label}
+                    Region
                   </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="control-group">
-            <div className="control-field">
-              <span className="control-label">Geography</span>
-              <div className="segmented segmented-dual" role="tablist" aria-label="Forecast geography">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={dashboardMode === "region"}
-                  className={dashboardMode === "region" ? "active" : ""}
-                  data-testid="dashboard-mode-region"
-                  onClick={() => setDashboardMode("region")}
-                >
-                  Region
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={dashboardMode === "district"}
-                  className={dashboardMode === "district" ? "active" : ""}
-                  data-testid="dashboard-mode-district"
-                  onClick={() => setDashboardMode("district")}
-                >
-                  District
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="control-group control-group-primary">
-            <DropdownField
-              label="Variable"
-              placeholder={themeSelectPlaceholder}
-              selectedLabel={themeSelectUnavailable || !activeThemeOption ? null : formatForecastThemeOptionLabel(activeThemeOption)}
-              value={thematicMode ?? ""}
-              onChange={(value) => {
-                setThematicMode(value ? (value as ForecastArtifactTheme) : null);
-              }}
-              testId="theme-select"
-              displayTestId="theme-select-display"
-              disabled={themeSelectUnavailable}
-              loading={isThemeOptionsLoading}
-              options={
-                themeSelectUnavailable
-                  ? []
-                  : themeOptions.map((option) => ({
-                      value: option.theme,
-                      label: formatForecastThemeOptionLabel(option),
-                      disabled: !option.enabled,
-                    }))
-              }
-            />
-            {isThemeOptionsLoading ? (
-              <>
-                <DropdownField
-                  label="Season"
-                  placeholder="Loading seasons..."
-                  value=""
-                  onChange={() => undefined}
-                  testId="season-select"
-                  displayTestId="season-select-display"
-                  disabled
-                  loading
-                  options={[]}
-                />
-                <DropdownField
-                  label="Sub-season"
-                  placeholder="Loading sub-seasons..."
-                  value=""
-                  onChange={() => undefined}
-                  testId="subseason-select"
-                  displayTestId="subseason-select-display"
-                  disabled
-                  loading
-                  options={[]}
-                />
-              </>
-            ) : shouldShowSeasonSelect ? (
-              <DropdownField
-                label="Season"
-                placeholder="All Seasons"
-                selectedLabel={seasonProfile ? seasonProfileLabel(seasonProfile) : null}
-                value={seasonProfile ?? ""}
-                onChange={(value) => {
-                  setSeasonProfile(value ? (value as SeasonProfile) : null);
-                }}
-                testId="season-select"
-                displayTestId="season-select-display"
-                disabled={!activeThemeOption?.requires_season}
-                options={(activeThemeOption?.seasons ?? []).map((option) => ({
-                  value: option,
-                  label: seasonProfileLabel(option),
-                }))}
-              />
-            ) : null}
-            {activeThemeOption?.requires_subseason ? (
-              <DropdownField
-                label="Sub-season"
-                placeholder="All Sub-seasons"
-                selectedLabel={subseason ? subseasonOptionLabel(subseason, activeThemeOption) : null}
-                value={subseason ?? ""}
-                onChange={(value) => {
-                  setSubseason(value ? (value as CalendarSubseason) : null);
-                }}
-                testId="subseason-select"
-                displayTestId="subseason-select-display"
-                options={activeThemeOption.subseasons.map((option) => ({
-                  value: option,
-                  label: subseasonOptionLabel(option, activeThemeOption),
-                }))}
-              />
-            ) : null}
-            {themeOptionsError ? (
-              <p className="control-inline-note" data-testid="theme-options-status-note">
-                {themeOptionsError}
-              </p>
-            ) : availabilityReason ? (
-              <p className="control-inline-note">{availabilityReason}</p>
-            ) : product?.is_low_resolution_fallback ? (
-              <p className="control-inline-note" data-testid="fallback-status-note">
-                Derived low-resolution fallback.
-              </p>
-            ) : null}
-          </div>
-
-          {shouldShowLoadingSkeleton ? (
-            <div className="control-group">
-              <ProductStatusSkeleton />
-            </div>
-          ) : null}
-
-          {productError ? (
-            <div className="control-group">
-              <section
-                className="control-status-panel control-status-panel-warning"
-                data-testid="product-status-note"
-                aria-live="polite"
-              >
-                <span className="control-status-kicker">
-                  {viewMode === "probabilistic" ? "Probability product unavailable" : "Deterministic product unavailable"}
-                </span>
-                <p>{productError}</p>
-                <div className="control-status-actions">
                   <button
                     type="button"
-                    className="ghost-button"
-                    onClick={onRetryProduct}
-                    disabled={isProductLoading || isRefreshing}
+                    role="tab"
+                    aria-selected={dashboardMode === "district"}
+                    className={dashboardMode === "district" ? "active" : ""}
+                    data-testid="dashboard-mode-district"
+                    onClick={() => setDashboardMode("district")}
                   >
-                    {isProductLoading || isRefreshing ? "Retrying..." : "Retry product"}
+                    District
                   </button>
                 </div>
-              </section>
+              </div>
             </div>
-          ) : null}
+
+            <div className="control-group control-group-primary">
+              <DropdownField
+                label="Variable"
+                placeholder={themeSelectPlaceholder}
+                selectedLabel={themeSelectUnavailable || !activeThemeOption ? null : formatForecastThemeOptionLabel(activeThemeOption)}
+                value={thematicMode ?? ""}
+                onChange={(value) => {
+                  setThematicMode(value ? (value as ForecastArtifactTheme) : null);
+                }}
+                testId="theme-select"
+                displayTestId="theme-select-display"
+                disabled={themeSelectUnavailable}
+                loading={isThemeOptionsLoading}
+                options={
+                  themeSelectUnavailable
+                    ? []
+                    : themeOptions.map((option) => ({
+                        value: option.theme,
+                        label: formatForecastThemeOptionLabel(option),
+                        disabled: !option.enabled,
+                      }))
+                }
+              />
+              {isThemeOptionsLoading ? (
+                <>
+                  <DropdownField
+                    label="Season"
+                    placeholder="Loading seasons..."
+                    value=""
+                    onChange={() => undefined}
+                    testId="season-select"
+                    displayTestId="season-select-display"
+                    disabled
+                    loading
+                    options={[]}
+                  />
+                  <DropdownField
+                    label="Sub-season"
+                    placeholder="Loading sub-seasons..."
+                    value=""
+                    onChange={() => undefined}
+                    testId="subseason-select"
+                    displayTestId="subseason-select-display"
+                    disabled
+                    loading
+                    options={[]}
+                  />
+                </>
+              ) : shouldShowSeasonSelect ? (
+                <DropdownField
+                  label="Season"
+                  placeholder="All Seasons"
+                  selectedLabel={seasonProfile ? seasonProfileLabel(seasonProfile) : null}
+                  value={seasonProfile ?? ""}
+                  onChange={(value) => {
+                    setSeasonProfile(value ? (value as SeasonProfile) : null);
+                  }}
+                  testId="season-select"
+                  displayTestId="season-select-display"
+                  disabled={!activeThemeOption?.requires_season}
+                  options={(activeThemeOption?.seasons ?? []).map((option) => ({
+                    value: option,
+                    label: seasonProfileLabel(option),
+                  }))}
+                />
+              ) : null}
+              {activeThemeOption?.requires_subseason ? (
+                <DropdownField
+                  label="Sub-season"
+                  placeholder="All Sub-seasons"
+                  selectedLabel={subseason ? subseasonOptionLabel(subseason, activeThemeOption) : null}
+                  value={subseason ?? ""}
+                  onChange={(value) => {
+                    setSubseason(value ? (value as CalendarSubseason) : null);
+                  }}
+                  testId="subseason-select"
+                  displayTestId="subseason-select-display"
+                  options={activeThemeOption.subseasons.map((option) => ({
+                    value: option,
+                    label: subseasonOptionLabel(option, activeThemeOption),
+                  }))}
+                />
+              ) : null}
+              {themeOptionsError ? (
+                <p className="control-inline-note" data-testid="theme-options-status-note">
+                  {themeOptionsError}
+                </p>
+              ) : availabilityReason ? (
+                <p className="control-inline-note">{availabilityReason}</p>
+              ) : product?.is_low_resolution_fallback ? (
+                <p className="control-inline-note" data-testid="fallback-status-note">
+                  Derived low-resolution fallback.
+                </p>
+              ) : null}
+            </div>
+
+            {shouldShowLoadingSkeleton ? (
+              <div className="control-group">
+                <ProductStatusSkeleton />
+              </div>
+            ) : null}
+
+            {productError ? (
+              <div className="control-group">
+                <section
+                  className="control-status-panel control-status-panel-warning"
+                  data-testid="product-status-note"
+                  aria-live="polite"
+                >
+                  <span className="control-status-kicker">
+                    {viewMode === "probabilistic" ? "Probability product unavailable" : "Deterministic product unavailable"}
+                  </span>
+                  <p>{productError}</p>
+                  <div className="control-status-actions">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={onRetryProduct}
+                      disabled={isProductLoading || isRefreshing}
+                    >
+                      {isProductLoading || isRefreshing ? "Retrying..." : "Retry product"}
+                    </button>
+                  </div>
+                </section>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
       <section className={legendClassName} aria-label="Forecast legend">
         {forecastLegend}
       </section>
-    </>
+    </div>
   );
 }

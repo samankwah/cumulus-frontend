@@ -20,7 +20,11 @@ const IMMUTABLE_BACKEND_DEPLOYMENT_HOST_PATTERN =
 function getApiBaseUrl() {
   const configuredUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
   if (!configuredUrl) {
-    return "";
+    // NEXT_PUBLIC_API_BASE_URL is inlined at build time. When a build forgets to
+    // set it, fall back to the production backend instead of same-origin relative
+    // requests, which 404 against the Next server and surface as "API error" on
+    // the map. Local development sets the variable via .env.local.
+    return PRODUCTION_API_BASE_URL;
   }
   try {
     const url = new URL(configuredUrl);

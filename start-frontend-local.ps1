@@ -5,8 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $frontendRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$workspaceRoot = Split-Path -Parent $frontendRoot
-$localDevScript = Join-Path $workspaceRoot "scripts\local-dev.ps1"
+$localDevScript = Join-Path $frontendRoot "scripts\local-dev.ps1"
 
 . $localDevScript
 

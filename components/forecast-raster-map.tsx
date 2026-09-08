@@ -647,10 +647,16 @@ export function ForecastRasterMap({
     >
       <FitBoundsOnce />
       <RasterClickHandler onSelectPoint={onSelectPoint} />
+      {/*
+        Keyless basemap. CARTO's anonymous basemap tiles now return an
+        "API KEY REQUIRED" watermark, so we use the standard OpenStreetMap
+        tiles, kept subtle with a low opacity.
+      */}
       <TileLayer
-        attribution='Tiles &copy; CartoDB'
-        url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
-        opacity={0.42}
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+        maxZoom={19}
+        opacity={0.45}
       />
       <Pane name="forecast-raster-pane" className="forecast-raster-pane" style={{ zIndex: 320 }}>
         {product ? <TileLayer url={product.tile_url} opacity={forecastTileOpacity(product)} pane="forecast-raster-pane" /> : null}

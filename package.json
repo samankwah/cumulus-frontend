@@ -12,10 +12,10 @@
     "start": "node ./scripts/start-production.mjs",
     "start:server": "node ./scripts/start-production.mjs",
     "typecheck": "tsc --noEmit",
-    "smoke": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test",
-    "smoke:headed": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test --headed",
-    "smoke:integration": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test -c playwright.integration.config.ts --workers=1",
-    "smoke:integration:headed": "set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test -c playwright.integration.config.ts --workers=1 --headed"
+    "smoke": "set NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000&& set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test",
+    "smoke:headed": "set NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000&& set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test --headed",
+    "smoke:integration": "set NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000&& set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test -c playwright.integration.config.ts --workers=1",
+    "smoke:integration:headed": "set NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000&& set NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1&& npm run build && playwright test -c playwright.integration.config.ts --workers=1 --headed"
   },
   "dependencies": {
     "@types/geojson": "^7946.0.16",

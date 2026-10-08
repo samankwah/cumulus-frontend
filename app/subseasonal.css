@@ -1753,6 +1753,25 @@
     display: none;
   }
 
+  /* The dock is the only panel at the bottom here: run it edge to edge as a bottom sheet. */
+  .view-subseasonal .chrome-layer {
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+  }
+
+  .view-subseasonal .floating-legend.floating-legend-subseasonal {
+    padding:
+      12px
+      max(14px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 24px 24px 0 0;
+  }
+
   .ss-topbar {
     position: absolute;
     top: max(10px, env(safe-area-inset-top));

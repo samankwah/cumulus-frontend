@@ -468,6 +468,11 @@ export function FloatingControls({
           <div className="control-card-content" id={controlsId} data-testid="mobile-control-content">
             <div className="brand-block">
               <span className="eyebrow">
+                {/* Cumulus is the team behind the AI forecast models. */}
+                <span className="brand-name">Cumulus</span>
+                <span className="brand-separator" aria-hidden="true">
+                  ·
+                </span>
                 {isSubseasonal
                   ? "Sub-seasonal rainfall outlook"
                   : viewMode === "probabilistic"

@@ -12,7 +12,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Ghana Seasonal Advisory Map",
+  title: "Cumulus · Ghana Forecast Map",
   description: "Near-real-time Ghana seasonal agro-climate map powered by published Cumulus seasonal products.",
   icons: {
     icon: [

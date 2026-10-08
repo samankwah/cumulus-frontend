@@ -7,7 +7,7 @@ import { DashboardDrawer } from "@/components/dashboard-drawer";
 import { FloatingControls } from "@/components/floating-controls";
 import type { DashboardView } from "@/components/floating-controls";
 import type { AreaHoverProvider } from "@/components/forecast-raster-map";
-import { RunBadge, SubseasonalDock, SubseasonalPanel } from "@/components/subseasonal/subseasonal-panel";
+import { RunBadge, SubseasonalDock, SubseasonalPanel, SubseasonalTopBar } from "@/components/subseasonal/subseasonal-panel";
 import { SubseasonalDrawer } from "@/components/subseasonal/subseasonal-drawer";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
 import { useSubseasonal } from "@/hooks/use-subseasonal";
@@ -77,7 +77,11 @@ export function DashboardShell() {
     selectRegion,
     selectPoint,
   } = useCumulusDashboard({ active: hasReadUrl && !isSubseasonal });
-  const subseasonal = useSubseasonal({ active: hasReadUrl && isSubseasonal, areaLevel: dashboardMode });
+  const subseasonal = useSubseasonal({
+    active: hasReadUrl && isSubseasonal,
+    areaLevel: dashboardMode,
+    onRestoreAreaLevel: setDashboardMode,
+  });
 
   const isProductReady = Boolean(
     product &&
@@ -206,12 +210,15 @@ export function DashboardShell() {
           />
 
           <div className="chrome-layer">
+            {isSubseasonal ? <SubseasonalTopBar state={subseasonal} onSeasonal={() => changeView("seasonal")} /> : null}
             <FloatingControls
               view={view}
               onViewChange={changeView}
               subseasonalHeader={<RunBadge state={subseasonal} />}
               subseasonalContent={<SubseasonalPanel state={subseasonal} />}
-              subseasonalLegend={<SubseasonalDock state={subseasonal} />}
+              subseasonalLegend={
+                <SubseasonalDock state={subseasonal} geography={{ mode: dashboardMode, setMode: setDashboardMode }} />
+              }
               collapsedSummary={isSubseasonal ? collapsedSummary : null}
               dashboardMode={dashboardMode}
               setDashboardMode={setDashboardMode}

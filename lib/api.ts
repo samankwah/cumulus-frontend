@@ -588,6 +588,39 @@ async function postJson<T>(
   return data;
 }
 
+/**
+ * GET a backend JSON resource and validate its shape. Responses use the browser HTTP cache
+ * (the backend sends run-versioned, immutable Cache-Control headers for sub-seasonal data).
+ */
+export async function getJson<T>(
+  path: string,
+  params: Record<string, string | number | null | undefined>,
+  validate: (value: unknown) => value is T,
+  options?: { signal?: AbortSignal },
+): Promise<T> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined && value !== "") {
+      query.set(key, String(value));
+    }
+  }
+  const queryString = query.toString();
+  const suffix = queryString ? `?${queryString}` : "";
+  const response = await fetch(`${API_BASE_URL}${path}${suffix}`, { signal: options?.signal });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const data = (await response.json()) as unknown;
+  if (!validate(data)) {
+    throw new ApiError("Backend returned an unexpected response shape.", 502, "invalid_response");
+  }
+  return data;
+}
+
+export function resolveBackendUrl(pathOrUrl: string) {
+  return resolveApiUrl(pathOrUrl) ?? pathOrUrl;
+}
+
 export function predictPoint(request: PointRequest) {
   return postJson("/predict", request, isPredictResponse);
 }

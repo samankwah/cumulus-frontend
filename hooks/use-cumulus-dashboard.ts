@@ -28,7 +28,7 @@ import type {
 
 const DEFAULT_REFRESH_INTERVAL_SECONDS = 1800;
 
-export function useCumulusDashboard() {
+export function useCumulusDashboard({ active = true }: { active?: boolean } = {}) {
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>("region");
   const [viewMode, setViewMode] = useState<ForecastViewMode>("probabilistic");
   const [thematicMode, setThematicMode] = useState<ForecastArtifactTheme | null>(null);
@@ -104,7 +104,20 @@ export function useCumulusDashboard() {
     [],
   );
 
+  // Seasonal products are loaded on first use, so the default 46-day view does not pay for them.
+  const hasActivatedRef = useRef(false);
+  const [optionsRequested, setOptionsRequested] = useState(active);
   useEffect(() => {
+    if (active && !hasActivatedRef.current) {
+      hasActivatedRef.current = true;
+      setOptionsRequested(true);
+    }
+  }, [active]);
+
+  useEffect(() => {
+    if (!optionsRequested) {
+      return;
+    }
     let ignore = false;
     async function loadOptions() {
       setIsThemeOptionsLoading(true);
@@ -139,7 +152,7 @@ export function useCumulusDashboard() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [optionsRequested]);
 
   useEffect(() => {
     if (!activeThemeOption) {

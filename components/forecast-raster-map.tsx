@@ -6,6 +6,7 @@ import type { LatLngBounds, LatLngBoundsExpression, LeafletMouseEvent } from "le
 import L from "leaflet";
 import { CircleMarker, GeoJSON, MapContainer, Pane, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
+import { CrossfadeTileLayer } from "@/components/crossfade-tile-layer";
 import { formatApiError, sampleForecastDeterministic, sampleForecastProbability } from "@/lib/api";
 import { formatDeterministicMetricDisplayValue, formatProbabilityPercentage } from "@/lib/dashboard";
 import { isPointInFeatureCollection, loadMapData } from "@/lib/map-data";
@@ -38,20 +39,56 @@ const MAP_STROKE = "rgba(32, 41, 50, 0.92)";
 const MAP_STROKE_SOFT = "rgba(73, 88, 104, 0.7)";
 const MAP_HALO = "rgba(119, 134, 150, 0.42)";
 
-function FitBoundsOnce() {
-  const map = useMap();
-  const hasFittedRef = useRef(false);
-
-  useEffect(() => {
-    if (hasFittedRef.current) {
+/** Padding that keeps Ghana clear of the floating panels (left column and bottom dock). */
+function getChromeAwarePadding(map: L.Map) {
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const stage = map.getContainer().closest(".atlas-stage");
+  let left = MAP_PADDING_TOP_LEFT[1];
+  let bottom = MAP_PADDING_BOTTOM_RIGHT[1];
+  const panels = stage ? stage.querySelectorAll<HTMLElement>(".floating-controls .control-card, .floating-legend") : [];
+  panels.forEach((panel) => {
+    const rect = panel.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
       return;
     }
-    map.fitBounds(GHANA_BOUNDS, {
-      paddingTopLeft: MAP_PADDING_TOP_LEFT,
-      paddingBottomRight: MAP_PADDING_BOTTOM_RIGHT,
-    });
-    hasFittedRef.current = true;
-  }, [map]);
+    const isLeftColumn = rect.width < mapRect.width * 0.5 && rect.height > mapRect.height * 0.35 && rect.left < mapRect.left + 80;
+    if (isLeftColumn) {
+      left = Math.max(left, rect.right - mapRect.left + 24);
+    } else if (rect.bottom > mapRect.bottom - 60) {
+      bottom = Math.max(bottom, mapRect.bottom - rect.top + 16);
+    }
+  });
+  // Never squeeze the country below a usable size.
+  left = Math.min(left, mapRect.width * 0.45);
+  bottom = Math.min(bottom, mapRect.height * 0.5);
+  return {
+    paddingTopLeft: [left, MAP_PADDING_TOP_LEFT[0]] as [number, number],
+    paddingBottomRight: [MAP_PADDING_BOTTOM_RIGHT[0], bottom] as [number, number],
+  };
+}
+
+function FitBoundsOnce({ fitKey }: { fitKey: string }) {
+  const map = useMap();
+  const fittedKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (fittedKeysRef.current.has(fitKey)) {
+      return;
+    }
+    const isFirstFit = fittedKeysRef.current.size === 0;
+    fittedKeysRef.current.add(fitKey);
+    if (isFirstFit) {
+      map.fitBounds(GHANA_BOUNDS, {
+        paddingTopLeft: MAP_PADDING_TOP_LEFT,
+        paddingBottomRight: MAP_PADDING_BOTTOM_RIGHT,
+      });
+    }
+    // Refit once the floating panels have laid out, so they do not cover the country.
+    const handle = window.setTimeout(() => {
+      map.fitBounds(GHANA_BOUNDS, { ...getChromeAwarePadding(map), animate: !isFirstFit });
+    }, 120);
+    return () => window.clearTimeout(handle);
+  }, [fitKey, map]);
 
   return null;
 }
@@ -119,6 +156,12 @@ type HoverForecastContext = {
   subseason: CalendarSubseason | null;
   isProductReady: boolean;
   productIdentity: string;
+};
+
+/** Synchronous hover content for the 46-day view (values come from one area-values request). */
+export type AreaHoverProvider = {
+  key: string;
+  render: (geography: { type: DashboardMode; key: string; name: string }) => string;
 };
 
 type HoverGeography = {
@@ -369,12 +412,14 @@ function ForecastMapOverlay({
   dashboardMode,
   selectedGeography,
   hoverContext,
+  areaHover,
   onSelectDistrict,
   onSelectRegion,
 }: {
   dashboardMode: DashboardMode;
   selectedGeography: ForecastGeographySelection | null;
   hoverContext: HoverForecastContext;
+  areaHover: AreaHoverProvider | null;
   onSelectDistrict: (geographyKey: string, geographyName: string, regionName: string, latitude: number, longitude: number) => void;
   onSelectRegion: (region: RegionMetadata) => void;
 }) {
@@ -385,6 +430,25 @@ function ForecastMapOverlay({
   const currentHoverContextKey = hoverContextKey(hoverContext);
   const activeHoverContextKeyRef = useRef(currentHoverContextKey);
   activeHoverContextKeyRef.current = currentHoverContextKey;
+  const areaHoverRef = useRef(areaHover);
+  areaHoverRef.current = areaHover;
+  const hoveredRef = useRef<{ layer: TooltipLayer; geography: HoverGeography } | null>(null);
+
+  // Keep an open tooltip in sync while the 46-day map animates underneath it.
+  useEffect(() => {
+    const hovered = hoveredRef.current;
+    if (!areaHover || !hovered) {
+      return;
+    }
+    setLayerTooltipContent(
+      hovered.layer,
+      areaHover.render({
+        type: hovered.geography.geographyType,
+        key: hovered.geography.geographyKey,
+        name: hovered.geography.geographyName,
+      }),
+    );
+  }, [areaHover]);
 
   useEffect(() => {
     let cancelled = false;
@@ -420,7 +484,22 @@ function ForecastMapOverlay({
       className: "district-tooltip",
     });
 
+    featureLayer.on("mouseout", () => {
+      if (hoveredRef.current?.layer === tooltipLayer) {
+        hoveredRef.current = null;
+      }
+    });
+
     featureLayer.on("mouseover", () => {
+      const provider = areaHoverRef.current;
+      if (provider) {
+        hoveredRef.current = { layer: tooltipLayer, geography };
+        setLayerTooltipContent(
+          tooltipLayer,
+          provider.render({ type: geography.geographyType, key: geography.geographyKey, name: geography.geographyName }),
+        );
+        return;
+      }
       const cacheKey = hoverCacheKey(hoverContext, geography);
       const contextKeyAtRequest = currentHoverContextKey;
       const isCurrentHoverContext = () => activeHoverContextKeyRef.current === contextKeyAtRequest;
@@ -620,7 +699,12 @@ export function ForecastRasterMap({
   onSelectDistrict,
   onSelectPoint,
   onSelectRegion,
+  raster = null,
+  areaHover = null,
+  fitKey = "initial",
 }: {
+  /** Changing this refits Ghana to the space left by the floating panels (once per key). */
+  fitKey?: string;
   dashboardMode: DashboardMode;
   viewMode: ForecastViewMode;
   thematicMode: ForecastArtifactTheme | null;
@@ -633,6 +717,9 @@ export function ForecastRasterMap({
   onSelectDistrict: (geographyKey: string, geographyName: string, regionName: string, latitude: number, longitude: number) => void;
   onSelectPoint: (latitude: number, longitude: number) => void;
   onSelectRegion: (region: RegionMetadata) => void;
+  /** 46-day view: a crossfading raster driven by the timeline instead of a seasonal product. */
+  raster?: { url: string | null; opacity: number; prefetchUrls: string[]; onLoad: (url: string) => void } | null;
+  areaHover?: AreaHoverProvider | null;
 }) {
   return (
     <MapContainer
@@ -645,7 +732,7 @@ export function ForecastRasterMap({
       maxBoundsViscosity={0.85}
       className="district-map"
     >
-      <FitBoundsOnce />
+      <FitBoundsOnce fitKey={fitKey} />
       <RasterClickHandler onSelectPoint={onSelectPoint} />
       {/*
         Keyless basemap. CARTO's anonymous basemap tiles now return an
@@ -659,12 +746,23 @@ export function ForecastRasterMap({
         opacity={0.45}
       />
       <Pane name="forecast-raster-pane" className="forecast-raster-pane" style={{ zIndex: 320 }}>
-        {product ? <TileLayer url={product.tile_url} opacity={forecastTileOpacity(product)} pane="forecast-raster-pane" /> : null}
+        {raster ? (
+          <CrossfadeTileLayer
+            url={raster.url}
+            opacity={raster.opacity}
+            pane="forecast-raster-pane"
+            onLoad={raster.onLoad}
+            prefetchUrls={raster.prefetchUrls}
+          />
+        ) : product ? (
+          <TileLayer url={product.tile_url} opacity={forecastTileOpacity(product)} pane="forecast-raster-pane" />
+        ) : null}
       </Pane>
       <Pane name="forecast-feature-pane" style={{ zIndex: 470 }}>
         <ForecastMapOverlay
           dashboardMode={dashboardMode}
           selectedGeography={selectedGeography}
+          areaHover={areaHover}
           hoverContext={{
             viewMode,
             thematicMode,

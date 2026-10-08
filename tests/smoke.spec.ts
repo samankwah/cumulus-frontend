@@ -316,7 +316,7 @@ test("forecast controls and legend fit phone viewports without horizontal overfl
     { width: 768, height: 1024 },
   ]) {
     await page.setViewportSize(viewport);
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("theme-select-display")).toHaveText("All Variables");
     await expect(page.getByTestId("legend-empty")).toBeVisible();
 
@@ -386,7 +386,7 @@ test("mobile controls collapse above the legend and drawer fills the map", async
     await route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 });
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("legend-empty")).toBeVisible();
   await expect(page.locator(".floating-controls")).toBeVisible();
   await expect(page.locator(".leaflet-control-attribution")).not.toBeVisible();
@@ -532,7 +532,7 @@ test("variable selector shows loading state while forecast options load", async 
     });
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("theme-select")).toBeDisabled();
   await expect(page.getByTestId("theme-select-display")).toHaveText("Loading variables...");
@@ -557,7 +557,7 @@ test("variable selector reports backend availability when forecast options fail"
     });
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("theme-select")).toBeDisabled();
   await expect(page.getByTestId("theme-select-display")).toHaveText("Variable options unavailable");
@@ -576,7 +576,7 @@ test("onset season selector includes southern minor when backend reports it read
     });
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
   await page.getByTestId("theme-select").selectOption("onset");
 
   await expect(page.getByTestId("season-select")).toBeVisible();
@@ -597,7 +597,7 @@ test("sub-season selector offers high-resolution AMJ and JJA when backend report
     });
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
   await page.getByTestId("theme-select").selectOption("rainfall_amount");
 
   await expect(page.getByTestId("subseason-select")).toBeVisible();
@@ -613,7 +613,7 @@ test("sub-season selector omits AMJ and JJA when backend does not report final p
     });
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
   await page.getByTestId("theme-select").selectOption("rainfall_amount");
 
   await expect(page.getByTestId("subseason-select")).toBeVisible();
@@ -641,7 +641,7 @@ test("fallback forecast products show a low-resolution status note", async ({ pa
     await route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 });
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
   await page.getByTestId("theme-select").selectOption("onset");
   await page.getByTestId("season-select").selectOption("southern_major");
 
@@ -670,7 +670,7 @@ test("blank raster clicks outside Ghana do not open the drawer", async ({ page }
     await route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 });
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
   await page.getByTestId("theme-select").selectOption("onset");
   await page.getByTestId("season-select").selectOption("southern_major");
   await page.locator('[class*="forecast-feature"] .leaflet-interactive').first().waitFor({ state: "attached", timeout: 30_000 });
@@ -724,7 +724,7 @@ test("probability tab uses forecast artifact endpoints and opens a sampled drawe
     await route.abort();
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("view-mode-probabilistic")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("dashboard-mode-region")).toHaveAttribute("aria-selected", "true");
@@ -844,7 +844,7 @@ test("deterministic tab uses forecast artifact endpoints and renders continuous 
     await route.abort();
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
   await page.getByTestId("view-mode-deterministic").click();
   await expect(page.getByTestId("theme-select")).toHaveValue("");
   await expect(page.getByTestId("season-select")).toHaveValue("");

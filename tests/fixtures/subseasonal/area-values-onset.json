@@ -1,0 +1,26 @@
+{
+  "run_id": "ifs_unet_2026092500",
+  "level": "region",
+  "layer": "onset",
+  "aggregation": "total",
+  "index": 1,
+  "unit": "date",
+  "values": {
+    "Ahafo": 3.0,
+    "Ashanti": 3.0,
+    "Bono": 3.0,
+    "Bono East": 3.0,
+    "Central": 43.0,
+    "Eastern": 3.0,
+    "Greater Accra": 25.0,
+    "North East": 0.0,
+    "Northern": 2.0,
+    "Oti": 2.0,
+    "Savannah": 3.0,
+    "Upper East": 0.0,
+    "Upper West": 0.0,
+    "Volta": 3.0,
+    "Western": 0.0,
+    "Western North": 3.0
+  }
+}

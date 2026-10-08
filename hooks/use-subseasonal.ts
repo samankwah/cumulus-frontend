@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { loadMapData } from "@/lib/map-data";
 import {
+  availableLayers,
   dayIndexForDate,
   defaultAggregation,
   layerAggregations,
@@ -56,6 +57,7 @@ export function useSubseasonal({
 
   const [runs, setRuns] = useState<SubseasonalRun[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [runsError, setRunsError] = useState<string | null>(null);
   const [isRunsLoading, setIsRunsLoading] = useState(false);
   const [runsAttempt, setRunsAttempt] = useState(0);
@@ -103,6 +105,13 @@ export function useSubseasonal({
   const indexCount = effectiveAggregation === "daily" ? dayCount : effectiveAggregation === "weekly" ? weekCount : 1;
   const hasTimeline = effectiveAggregation !== "total" && indexCount > 1;
 
+  // A link to a layer this backend does not serve (e.g. onset on an older deployment) opens rainfall.
+  useEffect(() => {
+    if (run && !availableLayers(run).includes(layer)) {
+      setLayerState("rainfall");
+    }
+  }, [layer, run]);
+
   const query = useMemo<LayerQuery | null>(
     () => (run ? { runId: run.run_id, layer, aggregation: effectiveAggregation, index } : null),
     [effectiveAggregation, index, layer, run],
@@ -120,7 +129,12 @@ export function useSubseasonal({
     getSubseasonalRuns(controller.signal)
       .then((payload) => {
         setRuns(payload.runs);
-        setRunId((current) => (current && payload.runs.some((item) => item.run_id === current) ? current : payload.active_run_id));
+        const linked = initialUrlState.current?.run ?? null;
+        setRunId((current) => {
+          const wanted = current ?? linked;
+          return wanted && payload.runs.some((item) => item.run_id === wanted) ? wanted : payload.active_run_id;
+        });
+        setActiveRunId(payload.active_run_id);
       })
       .catch((error: unknown) => {
         if (!isAbort(error)) {
@@ -262,6 +276,7 @@ export function useSubseasonal({
     }
     writeUrlState({
       view: "subseasonal",
+      run: run && run.run_id !== activeRunId ? run.run_id : null,
       layer,
       aggregation: effectiveAggregation,
       day: day || null,
@@ -269,7 +284,7 @@ export function useSubseasonal({
       point: selection?.kind === "point" ? { latitude: selection.latitude, longitude: selection.longitude } : null,
       area: selection?.kind === "area" ? { level: selection.level, name: selection.name } : null,
     });
-  }, [active, day, effectiveAggregation, layer, selection, week]);
+  }, [active, activeRunId, day, effectiveAggregation, layer, run, selection, week]);
 
   /* ------------------------------------------------------------------ playback: advance only after the current frame's tiles loaded */
   const lastStepRef = useRef(0);
@@ -345,6 +360,23 @@ export function useSubseasonal({
     [dayCount, layer, run],
   );
 
+  /** Switch the forecast issue date, keeping the shown calendar day when the new run covers it. */
+  const selectRun = useCallback(
+    (nextRunId: string) => {
+      const next = runs.find((item) => item.run_id === nextRunId);
+      if (!next || next.run_id === run?.run_id) {
+        return;
+      }
+      const shownDate = run?.days.find((item) => item.day === day)?.date ?? todayIso();
+      const sameDay = dayIndexForDate(next, shownDate);
+      setIsPlaying(false);
+      setDayState(sameDay ?? 1);
+      setSeries(null);
+      setRunId(next.run_id);
+    },
+    [day, run, runs],
+  );
+
   const selectPoint = useCallback((latitude: number, longitude: number) => {
     setSelection({ kind: "point", latitude, longitude });
     setSeries(null);
@@ -371,6 +403,8 @@ export function useSubseasonal({
   return {
     runs,
     run,
+    activeRunId,
+    selectRun,
     runsError,
     isRunsLoading,
     retryRuns: () => setRunsAttempt((value) => value + 1),

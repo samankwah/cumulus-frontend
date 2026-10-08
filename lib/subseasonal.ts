@@ -4,7 +4,7 @@ import { ApiError, getJson, resolveBackendUrl } from "@/lib/api";
  * Sub-seasonal (46-day) IFS-UNet rainfall: types, API client, formatting and URL state.
  * ------------------------------------------------------------------------------------------ */
 
-export type SubseasonalLayerKey = "rainfall" | "rainy_days" | "dry_spell_days" | "wet_spell_days";
+export type SubseasonalLayerKey = "rainfall" | "rainy_days" | "dry_spell_days" | "wet_spell_days" | "onset";
 export type SubseasonalAggregation = "daily" | "weekly" | "total";
 export type SubseasonalAreaLevel = "region" | "district";
 export type SpellKind = "dry" | "wet";
@@ -13,6 +13,23 @@ export type SubseasonalThresholds = {
   wet_day_mm: number;
   dry_spell_min_days: number;
   wet_spell_min_days: number;
+  /** Onset rule; absent from backends that predate the onset layer. */
+  onset_mm?: number;
+  onset_window_days?: number;
+  onset_guard_days?: number;
+  onset_max_dry_days?: number;
+};
+
+/** First day of the rainy season found inside the forecast (see the backend onset rule). */
+export type SubseasonalOnset = {
+  day: number;
+  date: string;
+  rain_mm: number | null;
+  longest_dry_after: number;
+  /** Days the dry-spell check could cover before the forecast ended. */
+  guard_days: number;
+  /** The check was cut short by the end of the forecast. */
+  provisional: boolean;
 };
 
 export type SubseasonalDay = {
@@ -104,8 +121,21 @@ export type SubseasonalLayer = {
   unit: string;
   legend: SubseasonalLegend;
   tile_url: string;
-  stats: { mean: number | null; max: number | null; min: number | null };
+  stats: {
+    mean: number | null;
+    max: number | null;
+    min: number | null;
+    /**
+     * Onset layer. Whole window: `share` = % of Ghana with an onset in the forecast. By day: `share` =
+     * % where the rains have set in by that day, `upcoming_share` = % where they are still to come.
+     */
+    share?: number | null;
+    upcoming_share?: number | null;
+    provisional_share?: number | null;
+  };
   description: string;
+  /** Onset only: % of Ghana where the rains have set in by each day. */
+  progress?: number[] | null;
 };
 
 export type SubseasonalAreaValues = {
@@ -155,6 +185,7 @@ export type SubseasonalSeries = {
     max_day_mm: number | null;
     max_day: number | null;
   };
+  onset?: SubseasonalOnset | null;
   spells: SubseasonalSpell[];
   thresholds: SubseasonalThresholds;
   guidance: string;
@@ -353,11 +384,53 @@ export function formatDay(isoDate: string, style: "short" | "long" | "weekday" |
   return dayMonth(date);
 }
 
+/** Calendar date of a 1-based lead day, counted from the run's first day. */
+export function leadDayDate(firstIso: string, day: number) {
+  const date = parseDay(firstIso);
+  date.setUTCDate(date.getUTCDate() + day - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Countdown value the backend uses for "no onset in this forecast". */
+export const NO_ONSET = 999;
+
+/** A by-day onset value (days from the shown day to onset; <= 0 started) as a short status. */
+export function describeCountdown(value: number | null | undefined, dayIso: string) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return { status: "–", detail: "" };
+  }
+  if (value >= NO_ONSET) {
+    return { status: "Not in this forecast", detail: "No onset within the 46 days" };
+  }
+  const days = Math.round(value);
+  const onsetIso = leadDayDate(dayIso, days + 1);
+  if (days <= 0) {
+    return {
+      status: "Rains have set in",
+      detail: days === 0 ? `Onset ${formatDay(onsetIso, "weekday")}` : `Since ${formatDay(onsetIso, "weekday")}, ${-days} day${days === -1 ? "" : "s"} earlier`,
+    };
+  }
+  return { status: `Onset in ${days} day${days === 1 ? "" : "s"}`, detail: formatDay(onsetIso, "weekday") };
+}
+
+/** An onset map value (lead day, 0 = none in the window) as a date. */
+export function formatOnset(value: number | null | undefined, firstIso: string, lastIso: string) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "–";
+  }
+  return value >= 1 ? formatDay(leadDayDate(firstIso, Math.round(value)), "weekday") : `No onset by ${formatDay(lastIso, "short")}`;
+}
+
 export function formatRange(startIso: string, endIso: string) {
   const start = parseDay(startIso);
   const end = parseDay(endIso);
   const startLabel = start.getUTCMonth() === end.getUTCMonth() ? String(start.getUTCDate()) : dayMonth(start);
   return `${startLabel}–${dayMonth(end)}`;
+}
+
+/** Issue date of a run, e.g. "Fri 25 Sep 2026". */
+export function formatIssueDate(iso: string) {
+  return formatDay(iso.slice(0, 10), "long");
 }
 
 export function formatInitTime(iso: string) {
@@ -395,6 +468,7 @@ export const LAYER_FALLBACK_LABELS: Record<SubseasonalLayerKey, string> = {
   rainy_days: "Rainy days",
   dry_spell_days: "Dry-spell days",
   wet_spell_days: "Wet-spell days",
+  onset: "Onset",
 };
 
 /** Compact names for chips and tabs where space is tight (phones). */
@@ -403,13 +477,33 @@ export const LAYER_SHORT_LABELS: Record<SubseasonalLayerKey, string> = {
   rainy_days: "Rain days",
   dry_spell_days: "Dry spells",
   wet_spell_days: "Wet spells",
+  onset: "Onset",
 };
+
+/** Display order of the layer pickers. */
+export const LAYER_ORDER: SubseasonalLayerKey[] = ["onset", "rainfall", "wet_spell_days", "dry_spell_days", "rainy_days"];
+
+/** Layers this run offers, in display order; a backend without a layer simply does not list it. */
+export function availableLayers(run: SubseasonalRun | null) {
+  if (!run) {
+    return LAYER_ORDER.filter((layer) => layer !== "onset");
+  }
+  return LAYER_ORDER.filter((layer) => run.layers.some((item) => item.layer === layer));
+}
 
 export const AGGREGATION_LABELS: Record<SubseasonalAggregation, string> = {
   daily: "Daily",
   weekly: "Weekly",
   total: "46-day total",
 };
+
+/** Period names as a layer reads them: onset is a status by day, or a single date for the run. */
+export function aggregationLabel(layer: SubseasonalLayerKey, aggregation: SubseasonalAggregation, leadDays: number | null = null) {
+  if (layer === "onset") {
+    return aggregation === "total" ? "Onset date" : "By day";
+  }
+  return aggregation === "total" && leadDays ? `${leadDays}-day` : AGGREGATION_LABELS[aggregation];
+}
 
 export function legendColorFor(legend: SubseasonalLegend, value: number | null) {
   if (value === null || !Number.isFinite(value)) {
@@ -428,6 +522,8 @@ export function legendColorFor(legend: SubseasonalLegend, value: number | null) 
 
 export type SubseasonalUrlState = {
   view: "subseasonal" | "seasonal";
+  /** A kept run other than the latest; null = the latest run. */
+  run: string | null;
   layer: SubseasonalLayerKey;
   aggregation: SubseasonalAggregation;
   day: number | null;
@@ -436,7 +532,7 @@ export type SubseasonalUrlState = {
   area: { level: SubseasonalAreaLevel; name: string } | null;
 };
 
-const LAYER_KEYS: SubseasonalLayerKey[] = ["rainfall", "rainy_days", "dry_spell_days", "wet_spell_days"];
+const LAYER_KEYS = LAYER_ORDER;
 const AGGREGATION_KEYS: SubseasonalAggregation[] = ["daily", "weekly", "total"];
 
 function parsePositiveInt(value: string | null) {
@@ -453,7 +549,8 @@ function parsePositiveInt(value: string | null) {
  * still open the 46-day view.
  */
 export function defaultAggregation(layer: SubseasonalLayerKey): SubseasonalAggregation {
-  return layer === "rainfall" ? "daily" : "total";
+  // Onset opens by day: where the rains have set in by the shown day, and how soon elsewhere.
+  return layer === "rainfall" || layer === "onset" ? "daily" : "total";
 }
 
 /** Periods the run offers for a layer, in display order (older runs: indicators are 46-day only). */
@@ -471,7 +568,9 @@ export function readUrlState(search: string): SubseasonalUrlState {
   const lon = Number.parseFloat(params.get("lon") ?? "");
   const areaLevel = params.get("area");
   const areaName = params.get("name");
+  const run = params.get("run");
   return {
+    run: run && /^[a-z0-9_]{1,64}$/i.test(run) ? run : null,
     view: params.get("view") === "seasonal" ? "seasonal" : "subseasonal",
     layer,
     aggregation,
@@ -488,12 +587,13 @@ export function writeUrlState(state: SubseasonalUrlState) {
     return;
   }
   const params = new URLSearchParams(window.location.search);
-  for (const key of ["view", "layer", "agg", "day", "week", "lat", "lon", "area", "name"]) {
+  for (const key of ["view", "run", "layer", "agg", "day", "week", "lat", "lon", "area", "name"]) {
     params.delete(key);
   }
   if (state.view === "seasonal") {
     params.set("view", "seasonal");
   } else {
+    if (state.run) params.set("run", state.run);
     if (state.layer !== "rainfall") params.set("layer", state.layer);
     if (state.aggregation !== defaultAggregation(state.layer)) params.set("agg", state.aggregation);
     if (state.aggregation === "daily" && state.day) params.set("day", String(state.day));
@@ -516,13 +616,14 @@ export function writeUrlState(state: SubseasonalUrlState) {
 /* ------------------------------------------------------------------------- CSV export */
 
 export function seriesToCsv(series: SubseasonalSeries, run: SubseasonalRun | null) {
-  const header = ["lead_day", "date", "rain_mm", "wet_day", "spell"];
+  const header = ["lead_day", "date", "rain_mm", "wet_day", "spell", "onset"];
   const rows = series.days.map((day) => [
     day.day,
     day.date,
     day.value ?? "",
     day.wet ? 1 : 0,
     day.spell ?? "",
+    series.onset?.day === day.day ? 1 : 0,
   ]);
   const location =
     series.kind === "point"
@@ -534,6 +635,13 @@ export function seriesToCsv(series: SubseasonalSeries, run: SubseasonalRun | nul
     `# Location: ${location} (${series.support})`,
     `# Wet day >= ${series.thresholds.wet_day_mm} mm; dry spell >= ${series.thresholds.dry_spell_min_days} days; wet spell >= ${series.thresholds.wet_spell_min_days} days`,
   ];
+  if (series.thresholds.onset_mm !== undefined) {
+    meta.push(
+      `# Onset: >= ${series.thresholds.onset_mm} mm within ${series.thresholds.onset_window_days} days, no dry spell over ${series.thresholds.onset_max_dry_days} days in the next ${series.thresholds.onset_guard_days}; ${
+        series.onset ? `${series.onset.date}${series.onset.provisional ? " (provisional)" : ""}` : "none in this forecast"
+      }`,
+    );
+  }
   return [...meta, header.join(","), ...rows.map((row) => row.join(","))].join("\n");
 }
 

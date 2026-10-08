@@ -15,6 +15,8 @@ import type { SubseasonalDay, SubseasonalLayerKey, SubseasonalSeries, Subseasona
  *
  * Planting and end-of-rains use the backend definitions (configs/advisory.yaml): onset = 20 mm in
  * 3 days with no 7-day dry run in the next 10; cessation = 14 days totalling 10 mm or less.
+ * The onset layer instead follows the backend's mapped onset (series.onset: 20 mm within 3 days,
+ * no dry spell over 10 days in the next 30), so the advice matches the date on the map.
  * Lead time sets confidence: the model's own guidance is that day-to-day detail beyond ~10 days
  * is indicative only.
  * ------------------------------------------------------------------------------------------ */
@@ -676,6 +678,94 @@ function wetSpellDraft(forecast: Forecast, series: SubseasonalSeries, crop: Crop
   return { tone, headline, actions, signals };
 }
 
+function onsetDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropProfile, ctx: SeasonContext): Draft {
+  const onset = series.onset ?? null;
+  const { thresholds } = series;
+  const minMm = thresholds.onset_mm ?? 20;
+  const windowDays = thresholds.onset_window_days ?? 3;
+  const guardDays = thresholds.onset_guard_days ?? 30;
+  const maxDry = thresholds.onset_max_dry_days ?? 10;
+  const firstDate = series.days[0]?.date;
+  const signals: string[] = [];
+  if (onset) {
+    signals.push(`${formatAmount(onset.rain_mm, "mm")} within ${windowDays} days from ${formatDay(onset.date, "weekday")}.`);
+    signals.push(
+      onset.provisional
+        ? `Longest dry run after it: ${onset.longest_dry_after} days, but the forecast ends ${onset.guard_days} days in, short of the ${guardDays}-day check.`
+        : `Longest dry run in the ${guardDays} days after: ${onset.longest_dry_after} days (limit ${maxDry}).`,
+    );
+  } else {
+    signals.push(`No ${minMm} mm burst within ${windowDays} days that stays clear of a ${maxDry + 1}+ day dry spell.`);
+  }
+  if (firstDate) {
+    signals.push(`Only this forecast is searched; rain before ${formatDay(firstDate, "short")} is not counted.`);
+  }
+
+  const day = onset ? (forecast.days.find((item) => item.day === onset.day) ?? null) : null;
+  const plantingTime = ctx.stage === "planting" || ctx.stage === "land_prep";
+
+  if (!plantingTime) {
+    // Onset matters for sowing; at other stages say what it means without pushing planting.
+    return {
+      tone: "low",
+      headline: onset ? `Rains settle from ${formatDay(onset.date, "weekday")}` : "No settled rains in this forecast",
+      actions: [
+        action(
+          forecast,
+          null,
+          "Now",
+          `It is ${ctx.stageLabel} for ${crop.noun} here, not planting time. Use the rainfall and spell layers for field work.`,
+        ),
+      ],
+      signals,
+    };
+  }
+
+  if (!onset) {
+    return {
+      tone: "high",
+      headline: "No reliable planting rains yet",
+      actions: [
+        action(forecast, null, "Now", `Hold planting ${crop.noun}: a false start would leave seedlings in a long dry spell.`),
+        action(forecast, null, "Now", "Prepare land, ridges and seed so you can plant as soon as the rains set in."),
+      ],
+      signals,
+    };
+  }
+
+  if (!day) {
+    // The onset fell before today on a stale run.
+    return {
+      tone: "low",
+      headline: `Planting rains began ${formatDay(onset.date, "weekday")}`,
+      actions: [action(forecast, null, "Now", `Soils should be moist: plant ${crop.noun} now if you have not yet.`)],
+      signals,
+    };
+  }
+
+  const when = formatDay(onset.date, "weekday");
+  if (onset.provisional) {
+    return {
+      tone: "mid",
+      headline: `Possible onset from ${when}`,
+      actions: [
+        action(forecast, null, "Now", "Prepare land and seed now."),
+        action(forecast, day, `From ${formatDay(onset.date, "short")}`, `Plant ${crop.noun} only if the next forecast still shows no long dry spell after this rain.`),
+      ],
+      signals,
+    };
+  }
+  return {
+    tone: "low",
+    headline: `Rains set in from ${when}`,
+    actions: [
+      action(forecast, null, "Now", "Finish land preparation and get seed and fertilizer ready."),
+      action(forecast, day, `From ${formatDay(onset.date, "short")}`, `Plant ${crop.noun} once this rain has wet the soil.`),
+    ],
+    signals,
+  };
+}
+
 export function buildSubseasonalAdvisory(
   layer: SubseasonalLayerKey,
   series: SubseasonalSeries,
@@ -708,7 +798,9 @@ export function buildSubseasonalAdvisory(
         ? drySpellDraft(forecast, series, crop, ctx)
         : layer === "wet_spell_days"
           ? wetSpellDraft(forecast, series, crop, ctx)
-          : rainfallDraft(forecast, crop, ctx);
+          : layer === "onset"
+            ? onsetDraft(forecast, series, crop, ctx)
+            : rainfallDraft(forecast, crop, ctx);
 
   // Standing advice ("Now", "All period") leads; dated actions follow in calendar order.
   const actions = draft.actions

@@ -31,7 +31,8 @@
   --map-panel-surface-soft: #d7dfe6;
   --map-panel-surface-strong: #edf2f6;
   --map-panel-border: rgba(255, 255, 255, 0.44);
-  --map-panel-shadow: -13px -13px 26px rgba(255, 255, 255, 0.66), 15px 18px 34px rgba(48, 63, 78, 0.22), inset 1px 1px 1px rgba(255, 255, 255, 0.6), inset -1px -1px 1px rgba(105, 121, 137, 0.12);
+  /* Floating panels: a neutral drop shadow only. A white top-left glow read as a haze over the grey map. */
+  --map-panel-shadow: 0 18px 40px rgba(48, 63, 78, 0.16), 0 2px 8px rgba(48, 63, 78, 0.08), inset 1px 1px 1px rgba(255, 255, 255, 0.6), inset -1px -1px 1px rgba(105, 121, 137, 0.12);
   --map-card-shadow: -6px -6px 14px rgba(255, 255, 255, 0.62), 7px 9px 17px rgba(96, 112, 128, 0.2);
   --map-inset-shadow: inset 5px 6px 12px rgba(118, 134, 151, 0.24), inset -5px -5px 12px rgba(255, 255, 255, 0.6);
   --drawer-bg: var(--map-panel-surface);

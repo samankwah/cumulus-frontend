@@ -2,9 +2,13 @@ import type { Page, Route } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import areaNorthern from "./fixtures/subseasonal/area-northern.json";
+import areaValuesOnset from "./fixtures/subseasonal/area-values-onset.json";
+import areaValuesOnsetDaily from "./fixtures/subseasonal/area-values-onset-daily.json";
 import areaValuesRegion from "./fixtures/subseasonal/area-values-region.json";
 import layerDaily from "./fixtures/subseasonal/layer-daily.json";
 import layerDrySpell from "./fixtures/subseasonal/layer-dry-spell.json";
+import layerOnset from "./fixtures/subseasonal/layer-onset.json";
+import layerOnsetDaily from "./fixtures/subseasonal/layer-onset-daily.json";
 import runs from "./fixtures/subseasonal/runs.json";
 import samplePoint from "./fixtures/subseasonal/sample-point.json";
 
@@ -14,8 +18,58 @@ const PNG_1X1 = Buffer.from(
   "base64",
 );
 
-/** `indicatorPeriods`: serve a backend whose indicators offer daily/weekly maps (the fixture predates them). */
-type MockOptions = { failRuns?: boolean; indicatorPeriods?: boolean };
+/**
+ * `indicatorPeriods`: serve a backend whose indicators offer daily/weekly maps (the fixture predates them).
+ * `onset`: serve a backend with the onset layer (the runs fixture predates it).
+ * `issueDates`: also keep the run issued a week earlier, so the issue date can be chosen.
+ */
+type MockOptions = { failRuns?: boolean; indicatorPeriods?: boolean; onset?: boolean; issueDates?: boolean };
+
+const EARLIER_RUN_ID = "ifs_unet_2026091800";
+
+/** The fixture run moved a week earlier, as if an older run were still kept. */
+function earlierRun(run: (typeof runs.runs)[number]) {
+  const shift = (iso: string) => {
+    const date = new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso);
+    date.setUTCDate(date.getUTCDate() - 7);
+    return iso.length === 10 ? date.toISOString().slice(0, 10) : date.toISOString().replace(".000Z", "Z");
+  };
+  return {
+    ...run,
+    run_id: EARLIER_RUN_ID,
+    active: false,
+    init_time: shift(run.init_time),
+    first_day: shift(run.first_day),
+    last_day: shift(run.last_day),
+    days: run.days.map((day) => ({ ...day, date: shift(day.date), period_start: shift(day.period_start), period_end: shift(day.period_end) })),
+    weeks: run.weeks.map((week) => ({ ...week, start_date: shift(week.start_date), end_date: shift(week.end_date) })),
+  };
+}
+
+const ONSET_THRESHOLDS = { onset_mm: 20, onset_window_days: 3, onset_guard_days: 30, onset_max_dry_days: 10 };
+const SERIES_ONSET = { day: 2, date: "2026-09-26", rain_mm: 31.4, longest_dry_after: 9, guard_days: 30, provisional: false };
+
+const runsWithOnset = {
+  ...runs,
+  runs: runs.runs.map((run) => ({
+    ...run,
+    thresholds: { ...run.thresholds, ...ONSET_THRESHOLDS },
+    layers: [
+      ...run.layers,
+      { layer: "onset", label: "Onset", description: layerOnset.description, aggregations: ["daily", "total"] },
+    ],
+  })),
+};
+
+function runsPayload(options: MockOptions) {
+  const base = options.onset ? runsWithOnset : options.indicatorPeriods ? runsWithIndicatorPeriods : runs;
+  return options.issueDates ? { ...base, runs: [...base.runs, ...base.runs.map(earlierRun)] } : base;
+}
+
+/** Series responses from an onset-aware backend carry the onset and its rule. */
+function withOnset<T extends { thresholds: object }>(series: T, enabled: boolean) {
+  return enabled ? { ...series, thresholds: { ...series.thresholds, ...ONSET_THRESHOLDS }, onset: SERIES_ONSET } : series;
+}
 
 const runsWithIndicatorPeriods = {
   ...runs,
@@ -37,6 +91,8 @@ async function mockSubseasonal(page: Page, options: MockOptions = {}) {
     const url = new URL(route.request().url());
     requests.push(url);
     const params = url.searchParams;
+    // Answer for the run that was asked for, as the backend does.
+    const runId = params.get("run_id") ?? runs.active_run_id;
     if (url.pathname.startsWith("/subseasonal/tiles/")) {
       return route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 });
     }
@@ -44,9 +100,18 @@ async function mockSubseasonal(page: Page, options: MockOptions = {}) {
       case "/subseasonal/runs":
         return state.failRuns
           ? json(route, { detail: "boom", error_code: "service_error" }, 500)
-          : json(route, options.indicatorPeriods ? runsWithIndicatorPeriods : runs);
+          : json(route, runsPayload(options));
       case "/subseasonal/layer": {
         const layer = params.get("layer") ?? "rainfall";
+        if (layer === "onset") {
+          const byDay = params.get("aggregation") !== "total";
+          return json(route, {
+            ...(byDay ? layerOnsetDaily : layerOnset),
+            run_id: runId,
+            index: Number(params.get("index") ?? "1"),
+            tile_url: `/subseasonal/tiles/{z}/{x}/{y}.png?${params.toString()}`,
+          });
+        }
         const aggregation = params.get("aggregation") ?? "daily";
         const index = Number(params.get("index") ?? "1");
         const base = layer === "rainfall" ? layerDaily : { ...layerDrySpell, layer };
@@ -58,6 +123,7 @@ async function mockSubseasonal(page: Page, options: MockOptions = {}) {
               : `Rainfall · Day ${index}`;
         return json(route, {
           ...base,
+          run_id: runId,
           aggregation,
           index,
           title,
@@ -66,17 +132,28 @@ async function mockSubseasonal(page: Page, options: MockOptions = {}) {
         });
       }
       case "/subseasonal/area-values":
+        if (params.get("layer") === "onset") {
+          const byDay = params.get("aggregation") !== "total";
+          return json(route, {
+            ...(byDay ? areaValuesOnsetDaily : areaValuesOnset),
+            run_id: runId,
+            level: params.get("level"),
+            aggregation: params.get("aggregation") ?? "daily",
+            index: Number(params.get("index") ?? "1"),
+          });
+        }
         return json(route, {
           ...areaValuesRegion,
+          run_id: runId,
           level: params.get("level"),
           layer: params.get("layer"),
           aggregation: params.get("aggregation"),
           index: Number(params.get("index")),
         });
       case "/subseasonal/sample":
-        return json(route, samplePoint);
+        return json(route, withOnset(samplePoint, Boolean(options.onset)));
       case "/subseasonal/area":
-        return json(route, { ...areaNorthern, name: params.get("name") ?? areaNorthern.name });
+        return json(route, withOnset({ ...areaNorthern, name: params.get("name") ?? areaNorthern.name }, Boolean(options.onset)));
       default:
         return route.fulfill({ status: 404, body: "" });
     }
@@ -105,7 +182,7 @@ test("46-day rainfall is the default view with run badge, timeline and stepped l
 
   await expect(page.getByTestId("dashboard-view-subseasonal")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("subseasonal-run")).toContainText("IFS-UNet");
-  await expect(page.getByTestId("subseasonal-run")).toContainText("Init 25 Sep 2026 00:00 UTC");
+  await expect(page.getByTestId("subseasonal-run")).toContainText("Issued 25 Sep 2026");
   await expect(page.getByTestId("subseasonal-stale")).toBeVisible();
   await expect(page.getByTestId("subseasonal-timeline")).toBeVisible();
   await expect(page.getByTestId("subseasonal-legend")).toContainText("mm");
@@ -224,6 +301,81 @@ test("indicators follow the period picker when the backend offers their daily an
   // The period is shared: another indicator keeps it.
   await page.getByTestId("ss-layer-wet_spell_days").click();
   await expect(page.getByTestId("ss-agg-weekly")).toHaveAttribute("aria-selected", "true");
+});
+
+test("onset opens by day: where the rains have set in, how soon elsewhere, and the onset date", async ({ page }) => {
+  const { requests } = await mockSubseasonal(page, { onset: true });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("subseasonal-timeline")).toBeVisible();
+
+  await page.getByTestId("ss-layer-onset").click();
+  await expect(page).toHaveURL(/layer=onset/);
+  await expect(page).not.toHaveURL(/agg=/);
+  // By day is the default, with the timeline to step through the forecast.
+  await expect(page.getByTestId("ss-agg-daily")).toHaveText("By day");
+  await expect(page.getByTestId("ss-agg-daily")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("subseasonal-timeline")).toBeVisible();
+  const legend = page.getByTestId("subseasonal-legend");
+  await expect(legend).toContainText("Started");
+  await expect(legend).toContainText("None");
+  await expect(legend).toContainText(/Set in across \d+% of Ghana by \w{3} \d+ \w{3}/);
+  await expect(legend).toContainText(/\d+% still to come/);
+
+  await page.getByTestId("timeline-next").click();
+  await expect
+    .poll(() => requests.filter((url) => url.pathname === "/subseasonal/layer" && url.searchParams.get("layer") === "onset" && url.searchParams.get("aggregation") === "daily").length)
+    .toBeGreaterThanOrEqual(2);
+
+  const region = page.locator('[class*="forecast-feature"] .leaflet-interactive').first();
+  await region.waitFor({ state: "attached", timeout: 30_000 });
+  await region.hover({ force: true });
+  await expect(page.locator(".leaflet-tooltip").last()).toContainText(/Rains have set in|Onset in \d+ days?|Not in this forecast/);
+
+  await region.click({ force: true });
+  await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/);
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Onset · day 2 of the forecast");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Sat 26 Sep");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText(/before|after|the day shown/);
+  await expect(page.getByTestId("subseasonal-onset-marker")).toHaveCount(1);
+  await expect(page.getByTestId("subseasonal-onset-rule")).toContainText("20 mm falls within 3 days");
+  await expect(page.getByTestId("subseasonal-advisory-headline")).toContainText("Sat 26 Sep");
+
+  // The whole-run view maps the onset date itself.
+  await page.getByTestId("ss-agg-total").click();
+  await expect(page).toHaveURL(/agg=total/);
+  await expect(page.getByTestId("subseasonal-timeline")).toHaveCount(0);
+  await expect(legend).toContainText("25 Sep");
+  await expect(legend).toContainText(/Onset across \d+% of Ghana/);
+});
+
+test("the forecast issue date can be changed and keeps the shown day", async ({ page }) => {
+  const { requests } = await mockSubseasonal(page, { onset: true, issueDates: true });
+  await page.goto("/?day=14", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("timeline-current")).toHaveText("Thu 8 Oct");
+  const picker = page.getByTestId("ss-issue-date");
+  await expect(picker.locator("option")).toHaveCount(2);
+  await expect(picker.locator("option").first()).toHaveText("Fri 25 Sep 2026 · latest");
+
+  await picker.selectOption(EARLIER_RUN_ID);
+  await expect(page).toHaveURL(new RegExp(`run=${EARLIER_RUN_ID}`));
+  await expect(page.getByTestId("timeline-current")).toHaveText("Thu 8 Oct");
+  await expect(page).toHaveURL(/day=21/);
+  await expect
+    .poll(() => requests.some((url) => url.pathname === "/subseasonal/layer" && url.searchParams.get("run_id") === EARLIER_RUN_ID))
+    .toBe(true);
+
+  // A shared link opens the same issue date.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("ss-issue-date")).toHaveValue(EARLIER_RUN_ID);
+});
+
+test("a backend without the onset layer hides it, and an onset link falls back to rainfall", async ({ page }) => {
+  await mockSubseasonal(page);
+  await page.goto("/?layer=onset", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("subseasonal-legend")).toContainText("Below 1 mm not shown");
+  await expect(page).not.toHaveURL(/layer=onset/);
+  await expect(page.getByTestId("ss-layer-rainfall")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("ss-layer-onset")).toHaveCount(0);
 });
 
 test("hovering a region shows its area value instantly", async ({ page }) => {

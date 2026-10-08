@@ -384,7 +384,6 @@ function DockBody({ state }: { state: SubseasonalState }) {
           isPlaying={state.isPlaying}
           onTogglePlaying={state.togglePlaying}
           isBusy={layer.index !== state.index}
-          progress={layer.layer === "onset" ? layer.progress : null}
         />
       ) : null}
       <SteppedLegend layer={layer} />

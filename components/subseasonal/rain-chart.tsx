@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatAmount, formatDay } from "@/lib/subseasonal";
-import type { SubseasonalSeries } from "@/lib/subseasonal";
+import type { SubseasonalOnset, SubseasonalSeries } from "@/lib/subseasonal";
 
 const HEIGHT = 168;
 const PAD = { top: 22, right: 8, bottom: 24, left: 30 };
@@ -38,10 +38,13 @@ export function RainChart({
   series,
   currentDay,
   onSelectDay,
+  onset,
 }: {
   series: SubseasonalSeries;
   currentDay: number | null;
   onSelectDay: (day: number) => void;
+  /** Marks the onset burst and replaces the spell bands (onset layer). */
+  onset?: SubseasonalOnset | null;
 }) {
   const [containerRef, width] = useWidth<HTMLDivElement>();
   const [hoverDay, setHoverDay] = useState<number | null>(null);
@@ -82,8 +85,20 @@ export function RainChart({
           aria-label={`Daily rainfall for ${count} days, total ${formatAmount(series.metrics.total_mm, "mm")}`}
           onMouseLeave={() => setHoverDay(null)}
         >
-          {/* spell bands */}
-          {series.spells.map((spell) => (
+          {/* onset burst, or spell bands */}
+          {onset ? (
+            <g data-testid="subseasonal-onset-marker">
+              <rect
+                className="ss-chart-band onset"
+                x={x(onset.day)}
+                y={PAD.top}
+                width={Math.min(series.thresholds.onset_window_days ?? 3, count - onset.day + 1) * slot}
+                height={plotHeight}
+              />
+              <line className="ss-chart-onset" x1={x(onset.day)} x2={x(onset.day)} y1={PAD.top - 14} y2={PAD.top + plotHeight} />
+            </g>
+          ) : null}
+          {(onset !== undefined ? [] : series.spells).map((spell) => (
             <rect
               key={`${spell.kind}-${spell.start_day}`}
               className={`ss-chart-band ${spell.kind}`}
@@ -155,8 +170,14 @@ export function RainChart({
       )}
       <div className="ss-chart-key" aria-hidden="true">
         <span className="key wet">Rain day ≥{threshold} mm</span>
-        <span className="key band-dry">Dry spell</span>
-        <span className="key band-wet">Wet spell</span>
+        {onset !== undefined ? (
+          <span className="key band-onset">Onset rains</span>
+        ) : (
+          <>
+            <span className="key band-dry">Dry spell</span>
+            <span className="key band-wet">Wet spell</span>
+          </>
+        )}
         <span className="key week">Weekly total (mm)</span>
       </div>
     </div>

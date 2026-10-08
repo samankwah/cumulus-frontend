@@ -1,6 +1,6 @@
 "use client";
 
-import { formatAmount } from "@/lib/subseasonal";
+import { formatAmount, formatDay, leadDayDate } from "@/lib/subseasonal";
 import type { SubseasonalLayer } from "@/lib/subseasonal";
 
 function edgeLabel(value: number) {
@@ -41,9 +41,84 @@ function ClassLegend({ layer }: { layer: SubseasonalLayer }) {
       </ul>
       <figcaption className="ss-legend-caption">
         {legend.note ? <span className="ss-legend-note">{legend.note}</span> : <span />}
-        <span className="ss-legend-credit" title="Basemap © Esri, HERE, Garmin, © OpenStreetMap contributors">
-          Basemap © Esri
+      </figcaption>
+    </figure>
+  );
+}
+
+/** Onset dates: one band per forecast week, each starting with its first date; grey for no onset. */
+function OnsetLegend({ layer }: { layer: SubseasonalLayer }) {
+  const { legend, stats } = layer;
+  const earliest = stats.min !== null && stats.min !== undefined ? formatDay(leadDayDate(layer.start_date, stats.min), "weekday") : null;
+  return (
+    <figure className="ss-legend ss-legend-onset" data-testid="subseasonal-legend" aria-label={`${layer.layer_label} legend`}>
+      <div className="ss-legend-bar" role="list">
+        {legend.bins.map((bin, position) => (
+          <span
+            key={bin.label}
+            role="listitem"
+            className="ss-legend-step"
+            style={{ backgroundColor: bin.color, color: textColorOn(bin.color) }}
+            title={bin.label}
+            aria-label={bin.label}
+          >
+            <span aria-hidden="true">{position === 0 ? "None" : bin.label.split("–")[0]}</span>
+          </span>
+        ))}
+      </div>
+      <figcaption className="ss-legend-caption">
+        <span>
+          {stats.share !== null && stats.share !== undefined ? (
+            <>
+              Onset across <strong>{Math.round(stats.share)}%</strong> of Ghana
+            </>
+          ) : (
+            "Onset date"
+          )}
+          {earliest ? (
+            <>
+              {" "}
+              · earliest <strong>{earliest}</strong>
+            </>
+          ) : null}
         </span>
+        {legend.note ? <span className="ss-legend-note">{legend.note}</span> : null}
+      </figcaption>
+    </figure>
+  );
+}
+
+/** Onset by day: started, then how soon elsewhere. The caption reads the shares for the shown day. */
+function CountdownLegend({ layer }: { layer: SubseasonalLayer }) {
+  const { legend, stats } = layer;
+  const day = formatDay(layer.start_date, "weekday");
+  return (
+    <figure className="ss-legend ss-legend-onset" data-testid="subseasonal-legend" aria-label={`${layer.layer_label} legend`}>
+      <div className="ss-legend-bar" role="list">
+        {legend.bins.map((bin) => (
+          <span
+            key={bin.label}
+            role="listitem"
+            className="ss-legend-step"
+            style={{ backgroundColor: bin.color, color: textColorOn(bin.color) }}
+            title={bin.label}
+            aria-label={bin.label}
+          >
+            <span aria-hidden="true">{bin.label.replace(" days", "").replace("Not in forecast", "None")}</span>
+          </span>
+        ))}
+      </div>
+      <figcaption className="ss-legend-caption">
+        <span>
+          Set in across <strong>{Math.round(stats.share ?? 0)}%</strong> of Ghana by {day}
+          {stats.upcoming_share ? (
+            <>
+              {" "}
+              · <strong>{Math.round(stats.upcoming_share)}%</strong> still to come
+            </>
+          ) : null}
+        </span>
+        <span className="ss-legend-note">Days until the rains set in</span>
       </figcaption>
     </figure>
   );
@@ -55,6 +130,12 @@ export function SteppedLegend({ layer }: { layer: SubseasonalLayer }) {
   const unit = legend.unit;
   if (legend.categorical) {
     return <ClassLegend layer={layer} />;
+  }
+  if (unit === "date") {
+    return <OnsetLegend layer={layer} />;
+  }
+  if (unit === "days_to_onset") {
+    return <CountdownLegend layer={layer} />;
   }
   return (
     <figure className="ss-legend" data-testid="subseasonal-legend" aria-label={`${layer.layer_label} legend in ${unit}`}>
@@ -86,10 +167,6 @@ export function SteppedLegend({ layer }: { layer: SubseasonalLayer }) {
           ) : null}
         </span>
         {legend.note ? <span className="ss-legend-note">{legend.note}</span> : null}
-        {/* Esri's terms require a visible basemap credit; the map's own badge is hidden in this view. */}
-        <span className="ss-legend-credit" title="Basemap © Esri, HERE, Garmin, © OpenStreetMap contributors">
-          Basemap © Esri
-        </span>
       </figcaption>
     </figure>
   );

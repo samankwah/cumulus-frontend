@@ -12,8 +12,10 @@ import { SubseasonalDrawer } from "@/components/subseasonal/subseasonal-drawer";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
 import { useSubseasonal } from "@/hooks/use-subseasonal";
 import {
-  AGGREGATION_LABELS,
+  aggregationLabel,
+  describeCountdown,
   formatAmount,
+  formatOnset,
   layerLabel,
   legendColorFor,
   readUrlState,
@@ -34,13 +36,20 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
 }
 
+/**
+ * The seasonal (wass2s) outlook is switched off for now: only the 46-day view is offered, and old
+ * `?view=seasonal` links open it. The seasonal code stays in place; set NEXT_PUBLIC_ENABLE_SEASONAL=1
+ * to bring the Outlook switch back (the test server does, so the seasonal view stays covered).
+ */
+const SEASONAL_ENABLED = process.env.NEXT_PUBLIC_ENABLE_SEASONAL === "1";
+
 export function DashboardShell() {
   const [view, setView] = useState<DashboardView>("subseasonal");
   const [hasReadUrl, setHasReadUrl] = useState(false);
 
   // The view comes from the URL on the client only (static export renders the default).
   useEffect(() => {
-    setView(readUrlState(window.location.search).view);
+    setView(SEASONAL_ENABLED ? readUrlState(window.location.search).view : "subseasonal");
     setHasReadUrl(true);
   }, []);
 
@@ -95,7 +104,7 @@ export function DashboardShell() {
   const changeView = useCallback((next: DashboardView) => {
     setView(next);
     if (next === "seasonal") {
-      writeUrlState({ view: "seasonal", layer: "rainfall", aggregation: "daily", day: null, week: null, point: null, area: null });
+      writeUrlState({ view: "seasonal", run: null, layer: "rainfall", aggregation: "daily", day: null, week: null, point: null, area: null });
     }
   }, []);
 
@@ -164,6 +173,23 @@ export function DashboardShell() {
         }
         const color = legendMeta ? legendColorFor(legendMeta.legend, value) : null;
         const swatch = color ? `<i class="ss-tip-swatch" style="background:${color}"></i>` : "";
+        if (areaValues.unit === "days_to_onset" && layerMeta) {
+          // By day: where the area stands on the shown day (onset of the area's mean rainfall).
+          const { status, detail } = describeCountdown(value, layerMeta.start_date);
+          return [
+            heading,
+            `<span class="ss-tip-value">${swatch}${escapeHtml(status)}</span>`,
+            `<span class="tooltip-muted">${escapeHtml(detail)}</span>`,
+          ].join("<br/>");
+        }
+        if (areaValues.unit === "date" && layerMeta) {
+          // Onset of the area's mean rainfall, the same figure the drawer shows for this area.
+          return [
+            heading,
+            `<span class="ss-tip-value">${swatch}${escapeHtml(formatOnset(value, layerMeta.start_date, layerMeta.end_date))}</span>`,
+            `<span class="tooltip-muted">Onset of the area's mean rainfall</span>`,
+          ].join("<br/>");
+        }
         const period = layerMeta?.title.split(" · ").slice(1).join(" · ") ?? "";
         return [
           heading,
@@ -176,7 +202,9 @@ export function DashboardShell() {
 
   const collapsedSummary = [
     layerLabel(run, subseasonal.layer),
-    subseasonal.aggregation === "total" ? null : AGGREGATION_LABELS[subseasonal.aggregation],
+    subseasonal.aggregation === "total" && subseasonal.layer !== "onset"
+      ? null
+      : aggregationLabel(subseasonal.layer, subseasonal.aggregation, run?.lead_days ?? null),
     dashboardMode === "district" ? "Districts" : "Regions",
   ]
     .filter(Boolean)
@@ -217,10 +245,12 @@ export function DashboardShell() {
           />
 
           <div className="chrome-layer">
-            {isSubseasonal ? <SubseasonalTopBar state={subseasonal} onSeasonal={() => changeView("seasonal")} /> : null}
+            {isSubseasonal ? (
+              <SubseasonalTopBar state={subseasonal} onSeasonal={SEASONAL_ENABLED ? () => changeView("seasonal") : undefined} />
+            ) : null}
             <FloatingControls
               view={view}
-              onViewChange={changeView}
+              onViewChange={SEASONAL_ENABLED ? changeView : undefined}
               subseasonalHeader={<RunBadge state={subseasonal} />}
               subseasonalContent={<SubseasonalPanel state={subseasonal} />}
               subseasonalLegend={

@@ -47,6 +47,7 @@ export function ForecastTimeline({
   isPlaying,
   onTogglePlaying,
   isBusy,
+  progress,
 }: {
   run: SubseasonalRun;
   aggregation: SubseasonalAggregation;
@@ -55,12 +56,18 @@ export function ForecastTimeline({
   isPlaying: boolean;
   onTogglePlaying: () => void;
   isBusy: boolean;
+  /** Daily % of Ghana where the rains have set in: replaces the rain bars with the onset front. */
+  progress?: number[] | null;
 }) {
   const sliderId = useId();
-  const frames = useMemo(() => buildFrames(run, aggregation), [aggregation, run]);
+  const showProgress = Boolean(progress?.length) && aggregation === "daily";
+  const frames = useMemo(() => {
+    const built = buildFrames(run, aggregation);
+    return showProgress && progress ? built.map((frame) => ({ ...frame, value: progress[frame.index - 1] ?? null })) : built;
+  }, [aggregation, progress, run, showProgress]);
   const count = frames.length;
   const current = frames[Math.min(Math.max(index, 1), count) - 1];
-  const maxValue = Math.max(1, ...frames.map((frame) => frame.value ?? 0));
+  const maxValue = showProgress ? 100 : Math.max(1, ...frames.map((frame) => frame.value ?? 0));
   const today = todayIso();
   const todayFrame =
     aggregation === "weekly"
@@ -159,7 +166,7 @@ export function ForecastTimeline({
       </div>
 
       <div className="ss-track">
-        <div className="ss-bars" aria-hidden="true">
+        <div className={`ss-bars${showProgress ? " progress" : ""}`} aria-hidden="true">
           {frames.map((frame) => (
             <span
               key={frame.index}
@@ -172,8 +179,16 @@ export function ForecastTimeline({
               ]
                 .filter(Boolean)
                 .join(" ")}
-              style={{ left: at(frame.index), width: barWidth, height: `${Math.max(6, ((frame.value ?? 0) / maxValue) * 100)}%` }}
-              title={`${frame.label}: ${formatAmount(frame.value, "mm")} Ghana mean`}
+              style={{
+                left: at(frame.index),
+                width: showProgress ? `${100 / count}%` : barWidth,
+                height: `${Math.max(showProgress ? 2 : 6, ((frame.value ?? 0) / maxValue) * 100)}%`,
+              }}
+              title={
+                showProgress
+                  ? `${frame.label}: rains set in across ${Math.round(frame.value ?? 0)}% of Ghana`
+                  : `${frame.label}: ${formatAmount(frame.value, "mm")} Ghana mean`
+              }
             />
           ))}
         </div>

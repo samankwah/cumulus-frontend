@@ -5,14 +5,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdvisoryPanel } from "@/components/subseasonal/advisory-panel";
 import { RainChart } from "@/components/subseasonal/rain-chart";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
-import { downloadText, formatAmount, formatDay, formatRange, LAYER_FALLBACK_LABELS, LAYER_SHORT_LABELS, layerLabel, seriesToCsv, todayIso } from "@/lib/subseasonal";
+import { availableLayers, downloadText, formatAmount, formatDay, formatRange, LAYER_SHORT_LABELS, layerLabel, seriesToCsv, todayIso } from "@/lib/subseasonal";
 import type { SpellKind, SubseasonalLayerKey, SubseasonalSeries } from "@/lib/subseasonal";
 import { buildSubseasonalAdvisory, isCropKey } from "@/lib/subseasonal-advisory";
 import type { CropKey } from "@/lib/subseasonal-advisory";
 
 const CROP_STORAGE_KEY = "ss-advisory-crop";
-
-const LAYER_KEYS = Object.keys(LAYER_FALLBACK_LABELS) as SubseasonalLayerKey[];
 
 /** The viewer's crop, remembered on this device only. */
 function useCropPreference() {
@@ -70,7 +68,7 @@ type Hero = { label: string; value: string; unit: string; context: string; whole
  * today, so the number agrees with the forward-looking advice; the whole-run figure (what the
  * map shows) stays alongside it.
  */
-function heroFor(layer: SubseasonalLayerKey, series: SubseasonalSeries, today: string): Hero {
+function heroFor(layer: SubseasonalLayerKey, series: SubseasonalSeries, today: string, shownDay: number | null = null): Hero {
   const all = series.days;
   const upcoming = all.filter((day) => day.date >= today);
   const partial = upcoming.length > 0 && upcoming.length < all.length;
@@ -86,6 +84,40 @@ function heroFor(layer: SubseasonalLayerKey, series: SubseasonalSeries, today: s
       unit: `/ ${days.length} days`,
       context: `${Math.round((rainy / Math.max(1, days.length)) * 100)}% of days reach ${thresholds.wet_day_mm} mm or more`,
       whole: partial ? `Whole run ${metrics.rainy_days} / ${all.length} days` : null,
+    };
+  }
+  if (layer === "onset") {
+    // One date for the whole run, so it is not re-counted from today like the totals.
+    const onset = series.onset;
+    const last = all[all.length - 1];
+    const windowDays = thresholds.onset_window_days ?? 3;
+    if (!onset) {
+      return {
+        label: `Onset · ${all.length}-day forecast`,
+        value: "None",
+        unit: last ? `by ${formatDay(last.date, "short")}` : "",
+        context: `No ${thresholds.onset_mm ?? 20} mm burst without a long dry spell after it`,
+        whole: null,
+      };
+    }
+    // Where the shown day stands relative to the onset, as on the map.
+    const shown = shownDay ? all[shownDay - 1] : null;
+    const gap = shown ? onset.day - shown.day : null;
+    const status =
+      shown && gap !== null
+        ? gap > 0
+          ? `${gap} day${gap === 1 ? "" : "s"} after ${formatDay(shown.date, "weekday")}`
+          : gap === 0
+            ? `On ${formatDay(shown.date, "weekday")}, the day shown`
+            : `Set in ${-gap} day${gap === -1 ? "" : "s"} before ${formatDay(shown.date, "weekday")}`
+        : null;
+    const notes = [status, onset.provisional ? `Provisional: dry-spell check covers ${onset.guard_days} of ${thresholds.onset_guard_days ?? 30} days` : null];
+    return {
+      label: `Onset · day ${onset.day} of the forecast`,
+      value: formatDay(onset.date, "weekday"),
+      unit: onset.date < today ? "(passed)" : "",
+      context: `${formatAmount(onset.rain_mm, "mm")} within ${windowDays} days · longest dry run after: ${formatAmount(onset.longest_dry_after, "days")}`,
+      whole: notes.filter(Boolean).join(" · ") || null,
     };
   }
   if (layer === "dry_spell_days" || layer === "wet_spell_days") {
@@ -270,6 +302,19 @@ function LayerSections({
       </Section>
     );
   }
+  if (layer === "onset") {
+    const { thresholds } = series;
+    return (
+      <Section kicker="Onset" title="Rain by day, onset marked">
+        <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} onset={series.onset ?? null} />
+        <p className="ss-onset-rule" data-testid="subseasonal-onset-rule">
+          Onset is the first rain day from which at least {thresholds.onset_mm ?? 20} mm falls within {thresholds.onset_window_days ?? 3} days,
+          with no dry spell longer than {thresholds.onset_max_dry_days ?? 10} days in the {thresholds.onset_guard_days ?? 30} days after. Only this
+          forecast is searched: rain before {formatDay(series.days[0]?.date ?? "", "short")} is not counted.
+        </p>
+      </Section>
+    );
+  }
   return (
     <>
       <Section kicker="Daily rainfall" title="Rain by day">
@@ -289,7 +334,7 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
   const currentDay = state.aggregation === "daily" ? state.index : null;
   const [crop, setCrop] = useCropPreference();
   const advisory = useMemo(() => (series ? buildSubseasonalAdvisory(layer, series, crop) : null), [crop, layer, series]);
-  const hero = series ? heroFor(layer, series, todayIso()) : null;
+  const hero = series ? heroFor(layer, series, todayIso(), currentDay) : null;
 
   const copyLink = async () => {
     try {
@@ -337,7 +382,7 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
       </div>
 
       <div className="ss-drawer-tabs" role="group" aria-label="Map layer">
-        {LAYER_KEYS.map((key) => (
+        {availableLayers(run).map((key) => (
           <button
             key={key}
             type="button"

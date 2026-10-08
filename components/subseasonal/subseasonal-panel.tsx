@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { AGGREGATION_LABELS, formatInitTime, LAYER_FALLBACK_LABELS, LAYER_SHORT_LABELS } from "@/lib/subseasonal";
+import { aggregationLabel, availableLayers, formatInitTime, formatIssueDate, LAYER_FALLBACK_LABELS, LAYER_SHORT_LABELS } from "@/lib/subseasonal";
 import type { SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
 import { ForecastTimeline } from "@/components/subseasonal/forecast-timeline";
 import { SteppedLegend } from "@/components/subseasonal/stepped-legend";
-
-const LAYER_ORDER: SubseasonalLayerKey[] = ["rainfall", "rainy_days", "dry_spell_days", "wet_spell_days"];
 
 function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
   const thresholds = state.run?.thresholds;
@@ -21,9 +19,11 @@ function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
     case "rainy_days":
       return `Days ≥${thresholds.wet_day_mm} mm`;
     case "dry_spell_days":
-      return `Runs ≥${thresholds.dry_spell_min_days} dry days`;
+      return `≥${thresholds.dry_spell_min_days} dry days`;
     case "wet_spell_days":
-      return `Runs ≥${thresholds.wet_spell_min_days} wet days`;
+      return `≥${thresholds.wet_spell_min_days} wet days`;
+    case "onset":
+      return "Start of rains";
   }
 }
 
@@ -35,8 +35,13 @@ export function RunBadge({ state }: { state: SubseasonalState }) {
   return (
     <div className="ss-run" data-testid="subseasonal-run">
       <span className="ss-run-model">{run.model_label}</span>
-      <span className="ss-run-init">Init {formatInitTime(run.init_time)}</span>
-      {run.is_stale ? (
+      <IssueDatePicker state={state} />
+      {state.activeRunId && run.run_id !== state.activeRunId ? (
+        // An earlier issue chosen on purpose: say so rather than warn that it is old.
+        <span className="ss-run-earlier" data-testid="subseasonal-earlier" title="A newer run is available in the Issued menu.">
+          Earlier issue
+        </span>
+      ) : run.is_stale ? (
         <span className="ss-run-stale" data-testid="subseasonal-stale" title="A newer run has not been published yet.">
           {run.age_days} days old
         </span>
@@ -45,9 +50,61 @@ export function RunBadge({ state }: { state: SubseasonalState }) {
   );
 }
 
+/**
+ * Forecast issue date (the model run's start). A pill in the run badge; with more than one run kept
+ * it is also the picker, a native select laid over the pill so it works with touch and keyboard.
+ */
+export function IssueDatePicker({
+  state,
+  testId = "ss-issue-date",
+  bare = false,
+}: {
+  state: SubseasonalState;
+  testId?: string;
+  /** Under an "Issued" label already: show the date alone. */
+  bare?: boolean;
+}) {
+  const { run, runs } = state;
+  if (!run) {
+    return null;
+  }
+  const choosable = runs.length > 1;
+  const label = formatInitTime(run.init_time).split(" ").slice(0, 3).join(" ");
+  return (
+    <span
+      className={`ss-run-issue${choosable ? " choosable" : ""}`}
+      title={`Model run started ${formatInitTime(run.init_time)}${choosable ? ". Choose another issue date." : ""}`}
+      data-testid={choosable ? undefined : testId}
+    >
+      {bare ? label : `Issued ${label}`}
+      {choosable ? (
+        <>
+          <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+            <path d="m6 8 4 4 4-4" />
+          </svg>
+          <select
+            value={run.run_id}
+            data-testid={testId}
+            aria-label="Forecast issue date"
+            onChange={(event) => state.selectRun(event.target.value)}
+          >
+            {runs.map((item) => (
+              <option key={item.run_id} value={item.run_id}>
+                {formatIssueDate(item.init_time)}
+                {item.run_id === state.activeRunId ? " · latest" : ""}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
 export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
   const run = state.run;
-  const activeDescription = run?.layers.find((item) => item.layer === state.layer)?.description;
+  // Onset's rule is long and already explained in the drawer, so the panel stays clean for it.
+  const activeDescription = state.layer === "onset" ? null : run?.layers.find((item) => item.layer === state.layer)?.description;
 
   if (state.runsError) {
     return (
@@ -72,21 +129,24 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
           <span className="control-label" id="ss-layer-label">
             Layer
           </span>
-          <div className="ss-layer-grid" role="radiogroup" aria-labelledby="ss-layer-label">
-            {LAYER_ORDER.map((layer) => {
+          <div className={`ss-layer-grid count-${availableLayers(run).length}`} role="radiogroup" aria-labelledby="ss-layer-label">
+            {availableLayers(run).map((layer, position, all) => {
               const selected = state.layer === layer;
+              // The three narrower cards of the uneven grid use the short names.
+              const narrow = all.length === 5 && position >= 2;
               return (
                 <button
                   key={layer}
                   type="button"
                   role="radio"
                   aria-checked={selected}
-                  className={`ss-layer-option${selected ? " active" : ""}`}
+                  className={`ss-layer-option ss-layer-${layer}${selected ? " active" : ""}`}
                   data-testid={`ss-layer-${layer}`}
                   disabled={!run}
                   onClick={() => state.setLayer(layer)}
                 >
-                  <strong>{run?.layers.find((item) => item.layer === layer)?.label ?? LAYER_FALLBACK_LABELS[layer]}</strong>
+                  <span className={`ss-layer-dot ss-dot-${layer}`} aria-hidden="true" />
+                  <strong>{narrow ? LAYER_SHORT_LABELS[layer] : (run?.layers.find((item) => item.layer === layer)?.label ?? LAYER_FALLBACK_LABELS[layer])}</strong>
                   <small>{layerHint(state, layer)}</small>
                 </button>
               );
@@ -99,7 +159,12 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
         <div className="control-group">
           <div className="control-field">
             <span className="control-label">Period</span>
-            <div className="segmented ss-segmented-triple" role="tablist" aria-label="Forecast period">
+            <div
+              className="segmented ss-segmented-triple"
+              style={{ gridTemplateColumns: `repeat(${state.aggregations.length}, minmax(0, 1fr))` }}
+              role="tablist"
+              aria-label="Forecast period"
+            >
               {state.aggregations.map((aggregation) => (
                 <button
                   key={aggregation}
@@ -111,7 +176,7 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
                   disabled={!run}
                   onClick={() => state.setAggregation(aggregation)}
                 >
-                  {aggregation === "total" && run ? `${run.lead_days}-day` : AGGREGATION_LABELS[aggregation]}
+                  {aggregationLabel(state.layer, aggregation, run?.lead_days ?? null)}
                 </button>
               ))}
             </div>
@@ -132,13 +197,22 @@ type Geography = { mode: SubseasonalAreaLevel; setMode: (mode: SubseasonalAreaLe
  */
 function MobileControls({ state, geography }: { state: SubseasonalState; geography: Geography }) {
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const chipsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = chipsRef.current;
+    const chip = row?.querySelector<HTMLElement>('[aria-checked="true"]');
+    if (row && chip) {
+      // Scroll the row only; scrollIntoView would also move the page.
+      row.scrollLeft = Math.max(0, chip.offsetLeft - (row.clientWidth - chip.offsetWidth) / 2);
+    }
+  }, [state.layer, state.run]);
   const run = state.run;
-  const description = run?.layers.find((item) => item.layer === state.layer)?.description;
+  const description = state.layer === "onset" ? null : run?.layers.find((item) => item.layer === state.layer)?.description;
   return (
     <div className="ss-mobile-controls">
       <div className="ss-mobile-bar">
-        <div className="ss-chips" role="radiogroup" aria-label="Map layer">
-          {LAYER_ORDER.map((layer) => (
+        <div className="ss-chips" role="radiogroup" aria-label="Map layer" ref={chipsRef}>
+          {availableLayers(run).map((layer) => (
             <button
               key={layer}
               type="button"
@@ -175,6 +249,12 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
       </div>
       {isOptionsOpen ? (
         <div className="ss-mobile-options" id="ss-mobile-options">
+          <div className="ss-option-row">
+            <span className="ss-option-label">Issued</span>
+            <div className="ss-run ss-run-inline">
+              <IssueDatePicker state={state} testId="ss-missue-date" bare />
+            </div>
+          </div>
           {state.aggregations.length > 1 ? (
             <div className="ss-option-row">
               <span className="ss-option-label">Period</span>
@@ -189,7 +269,7 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
                     disabled={!run}
                     onClick={() => state.setAggregation(aggregation)}
                   >
-                    {aggregation === "total" && run ? `${run.lead_days}-day` : AGGREGATION_LABELS[aggregation]}
+                    {aggregationLabel(state.layer, aggregation, run?.lead_days ?? null)}
                   </button>
                 ))}
               </div>
@@ -220,19 +300,28 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
 }
 
 /** Phones only: what the desktop panel header carries, the outlook switch and how fresh the run is. */
-export function SubseasonalTopBar({ state, onSeasonal }: { state: SubseasonalState; onSeasonal: () => void }) {
+export function SubseasonalTopBar({ state, onSeasonal }: { state: SubseasonalState; onSeasonal?: () => void }) {
   const run = state.run;
   return (
     <header className="ss-topbar" data-testid="ss-topbar">
-      <div className="ss-mini-segmented ss-topbar-outlook" role="radiogroup" aria-label="Forecast outlook">
-        <button type="button" role="radio" aria-checked="true">
-          46 days
-        </button>
-        <button type="button" role="radio" aria-checked="false" data-testid="ss-topbar-seasonal" onClick={onSeasonal}>
-          Seasonal
-        </button>
-      </div>
-      {run ? (
+      {onSeasonal ? (
+        <div className="ss-mini-segmented ss-topbar-outlook" role="radiogroup" aria-label="Forecast outlook">
+          <button type="button" role="radio" aria-checked="true">
+            46 days
+          </button>
+          <button type="button" role="radio" aria-checked="false" data-testid="ss-topbar-seasonal" onClick={onSeasonal}>
+            Seasonal
+          </button>
+        </div>
+      ) : (
+        <span className="ss-topbar-title">46-day outlook</span>
+      )}
+      {run && state.activeRunId && run.run_id !== state.activeRunId ? (
+        <span className="ss-topbar-run" data-testid="ss-topbar-run" title={`${run.model_label} run initialised ${formatInitTime(run.init_time)}`}>
+          <span className="ss-topbar-model">Issued </span>
+          {formatInitTime(run.init_time).split(" ").slice(0, 2).join(" ")}
+        </span>
+      ) : run ? (
         <span
           className={run.is_stale ? "ss-topbar-run stale" : "ss-topbar-run"}
           data-testid="ss-topbar-run"
@@ -295,6 +384,7 @@ function DockBody({ state }: { state: SubseasonalState }) {
           isPlaying={state.isPlaying}
           onTogglePlaying={state.togglePlaying}
           isBusy={layer.index !== state.index}
+          progress={layer.layer === "onset" ? layer.progress : null}
         />
       ) : null}
       <SteppedLegend layer={layer} />

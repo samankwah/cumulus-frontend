@@ -4,6 +4,7 @@ import { Space_Grotesk } from "next/font/google";
 import "leaflet/dist/leaflet.css";
 
 import "./globals.css";
+import "./subseasonal.css";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],

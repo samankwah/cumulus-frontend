@@ -1,17 +1,49 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 
 import { DashboardDrawer } from "@/components/dashboard-drawer";
 import { FloatingControls } from "@/components/floating-controls";
+import type { DashboardView } from "@/components/floating-controls";
+import type { AreaHoverProvider } from "@/components/forecast-raster-map";
+import { RunBadge, SubseasonalDock, SubseasonalPanel } from "@/components/subseasonal/subseasonal-panel";
+import { SubseasonalDrawer } from "@/components/subseasonal/subseasonal-drawer";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
+import { useSubseasonal } from "@/hooks/use-subseasonal";
+import {
+  AGGREGATION_LABELS,
+  formatAmount,
+  layerLabel,
+  legendColorFor,
+  readUrlState,
+  subseasonalTileUrl,
+  writeUrlState,
+} from "@/lib/subseasonal";
+import type { ForecastGeographySelection, ForecastPointSelection } from "@/lib/types";
 
 const ForecastRasterMap = dynamic(
   () => import("@/components/forecast-raster-map").then((module) => module.ForecastRasterMap),
   { ssr: false },
 );
 
+const SUBSEASONAL_TILE_OPACITY = 0.86;
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+}
+
 export function DashboardShell() {
+  const [view, setView] = useState<DashboardView>("subseasonal");
+  const [hasReadUrl, setHasReadUrl] = useState(false);
+
+  // The view comes from the URL on the client only (static export renders the default).
+  useEffect(() => {
+    setView(readUrlState(window.location.search).view);
+    setHasReadUrl(true);
+  }, []);
+
+  const isSubseasonal = view === "subseasonal";
   const {
     dashboardMode,
     setDashboardMode,
@@ -44,7 +76,9 @@ export function DashboardShell() {
     selectDistrict,
     selectRegion,
     selectPoint,
-  } = useCumulusDashboard();
+  } = useCumulusDashboard({ active: hasReadUrl && !isSubseasonal });
+  const subseasonal = useSubseasonal({ active: hasReadUrl && isSubseasonal, areaLevel: dashboardMode });
+
   const isProductReady = Boolean(
     product &&
       thematicMode &&
@@ -53,9 +87,95 @@ export function DashboardShell() {
       (!activeThemeOption.requires_subseason || subseason),
   );
 
+  const changeView = useCallback((next: DashboardView) => {
+    setView(next);
+    if (next === "seasonal") {
+      writeUrlState({ view: "seasonal", layer: "rainfall", aggregation: "daily", day: null, week: null, point: null, area: null });
+    }
+  }, []);
+
+  /* ------------------------------------------------------------ 46-day map wiring */
+  const { query, layerMeta, areaValues, run } = subseasonal;
+  const subseasonalGeography = useMemo<ForecastGeographySelection | null>(() => {
+    const selection = subseasonal.selection;
+    if (selection?.kind !== "area") {
+      return null;
+    }
+    return {
+      mode: selection.level,
+      geographyKey: selection.geographyKey,
+      geographyName: selection.name,
+      regionName: selection.regionName,
+      latitude: selection.latitude,
+      longitude: selection.longitude,
+    };
+  }, [subseasonal.selection]);
+
+  const subseasonalPoint = useMemo<ForecastPointSelection | null>(() => {
+    const selection = subseasonal.selection;
+    return selection?.kind === "point" ? { latitude: selection.latitude, longitude: selection.longitude } : null;
+  }, [subseasonal.selection]);
+
+  const prefetchUrls = useMemo(() => {
+    if (!query || !subseasonal.hasTimeline) {
+      return [];
+    }
+    const ahead = subseasonal.isPlaying ? [1, 2, 3] : [1, -1];
+    return ahead
+      .map((offset) => query.index + offset)
+      .filter((index) => index >= 1 && index <= subseasonal.indexCount)
+      .map((index) => subseasonalTileUrl({ ...query, index }));
+  }, [query, subseasonal.hasTimeline, subseasonal.indexCount, subseasonal.isPlaying]);
+
+  const { onTilesLoaded, tileUrl } = subseasonal;
+  const raster = useMemo(
+    () =>
+      isSubseasonal
+        ? { url: tileUrl, opacity: SUBSEASONAL_TILE_OPACITY, prefetchUrls, onLoad: onTilesLoaded }
+        : null,
+    [isSubseasonal, onTilesLoaded, prefetchUrls, tileUrl],
+  );
+
+  const areaHover = useMemo<AreaHoverProvider | null>(() => {
+    if (!isSubseasonal) {
+      return null;
+    }
+    const legendMeta = layerMeta && areaValues && layerMeta.layer === areaValues.layer ? layerMeta : null;
+    const fresh =
+      areaValues && query && areaValues.layer === query.layer && areaValues.aggregation === query.aggregation && areaValues.index === query.index;
+    return {
+      key: `${areaValues?.run_id}:${areaValues?.layer}:${areaValues?.aggregation}:${areaValues?.index}:${areaValues?.level}`,
+      render: ({ name }) => {
+        const heading = `<strong>${escapeHtml(name)}</strong>`;
+        if (!areaValues || !fresh) {
+          return `${heading}<br/><span class="tooltip-muted">Loading area value…</span>`;
+        }
+        const value = areaValues.values[name] ?? null;
+        const color = legendMeta ? legendColorFor(legendMeta.legend, value) : null;
+        const swatch = color ? `<i class="ss-tip-swatch" style="background:${color}"></i>` : "";
+        const period = layerMeta?.title.split(" · ").slice(1).join(" · ") ?? "";
+        return [
+          heading,
+          `<span class="ss-tip-value">${swatch}${escapeHtml(formatAmount(value, areaValues.unit))}</span>`,
+          `<span class="tooltip-muted">Area mean${period ? ` · ${escapeHtml(period)}` : ""}</span>`,
+        ].join("<br/>");
+      },
+    };
+  }, [areaValues, isSubseasonal, layerMeta, query]);
+
+  const collapsedSummary = [
+    layerLabel(run, subseasonal.layer),
+    subseasonal.layer === "rainfall" ? AGGREGATION_LABELS[subseasonal.aggregation] : null,
+    dashboardMode === "district" ? "Districts" : "Regions",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <main className="spa-shell">
-      <section className="atlas-stage">
+      <section
+        className={`atlas-stage${isSubseasonal ? " view-subseasonal" : ""}${isSubseasonal && subseasonal.isDrawerOpen ? " ss-drawer-open" : ""}`}
+      >
         <div className="map-frame" data-testid="map-frame">
           <ForecastRasterMap
             dashboardMode={dashboardMode}
@@ -64,16 +184,35 @@ export function DashboardShell() {
             seasonProfile={seasonProfile}
             subseason={subseason}
             isProductReady={isProductReady}
-            product={product}
-            selectedPoint={currentSamplePoint}
-            selectedGeography={selectedGeography}
-            onSelectDistrict={selectDistrict}
-            onSelectPoint={selectPoint}
-            onSelectRegion={selectRegion}
+            product={isSubseasonal ? null : product}
+            selectedPoint={isSubseasonal ? subseasonalPoint : currentSamplePoint}
+            selectedGeography={isSubseasonal ? subseasonalGeography : selectedGeography}
+            onSelectDistrict={(key, name, region, latitude, longitude) =>
+              isSubseasonal
+                ? subseasonal.selectArea("district", name, region, key, latitude, longitude)
+                : selectDistrict(key, name, region, latitude, longitude)
+            }
+            onSelectPoint={(latitude, longitude) =>
+              isSubseasonal ? subseasonal.selectPoint(latitude, longitude) : selectPoint(latitude, longitude)
+            }
+            onSelectRegion={(region) =>
+              isSubseasonal
+                ? subseasonal.selectArea("region", region.name, region.name, region.name, region.latitude, region.longitude)
+                : selectRegion(region)
+            }
+            raster={raster}
+            areaHover={areaHover}
+            fitKey={isSubseasonal ? (layerMeta ? "subseasonal-ready" : "subseasonal") : "seasonal"}
           />
 
           <div className="chrome-layer">
             <FloatingControls
+              view={view}
+              onViewChange={changeView}
+              subseasonalHeader={<RunBadge state={subseasonal} />}
+              subseasonalContent={<SubseasonalPanel state={subseasonal} />}
+              subseasonalLegend={<SubseasonalDock state={subseasonal} />}
+              collapsedSummary={isSubseasonal ? collapsedSummary : null}
               dashboardMode={dashboardMode}
               setDashboardMode={setDashboardMode}
               viewMode={viewMode}
@@ -99,24 +238,28 @@ export function DashboardShell() {
           </div>
         </div>
 
-        <DashboardDrawer
-          dashboardMode={dashboardMode}
-          viewMode={viewMode}
-          isOpen={isDrawerOpen}
-          onClose={closeDrawer}
-          thematicMode={thematicMode}
-          seasonProfile={seasonProfile}
-          subseason={subseason}
-          selectedGeography={selectedGeography}
-          product={product}
-          sample={sample}
-          productError={productError}
-          sampleError={sampleError}
-          isProductLoading={isProductLoading}
-          isSampleLoading={isSampleLoading}
-          onRetryProduct={retryProduct}
-          onRetrySample={retrySample}
-        />
+        {isSubseasonal ? (
+          <SubseasonalDrawer state={subseasonal} onSeekDay={subseasonal.seekDay} />
+        ) : (
+          <DashboardDrawer
+            dashboardMode={dashboardMode}
+            viewMode={viewMode}
+            isOpen={isDrawerOpen}
+            onClose={closeDrawer}
+            thematicMode={thematicMode}
+            seasonProfile={seasonProfile}
+            subseason={subseason}
+            selectedGeography={selectedGeography}
+            product={product}
+            sample={sample}
+            productError={productError}
+            sampleError={sampleError}
+            isProductLoading={isProductLoading}
+            isSampleLoading={isSampleLoading}
+            onRetryProduct={retryProduct}
+            onRetrySample={retrySample}
+          />
+        )}
       </section>
     </main>
   );

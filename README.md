@@ -14,6 +14,14 @@ seasonalfcst/
 
 ## What it includes
 
+- **Next 46 days** (default view): daily, weekly and 46-day rainfall from ECMWF IFS runs
+  downscaled with a UNet (served by the backend `/subseasonal/*` endpoints), plus rainy-day,
+  dry-spell-day and wet-spell-day outlook layers. A timeline with play/step controls and a
+  national-rain sparkline drives the map; regions, districts or any point open a drawer with
+  the daily chart, wet/dry spell calendar, weekly totals and CSV export. The selection is kept
+  in the URL (`?layer=…&agg=…&day=…&area=…`) so views can be shared. Raw IFS-UNet files are
+  ingested by the backend and are never stored in this repo.
+- **Seasonal** view (`?view=seasonal`):
 - Ghana district and region choropleth map with `react-leaflet`
 - Published classified seasonal products loaded from the backend `GET /forecast/products/options`,
   `GET /forecast/probability/active` and `GET /forecast/deterministic/active` endpoints

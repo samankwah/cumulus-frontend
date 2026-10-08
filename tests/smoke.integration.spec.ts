@@ -66,7 +66,7 @@ test("probability and deterministic tabs work against the real forecast artifact
     }
   });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/?view=seasonal", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("map-frame")).toBeVisible();
   await expect(page.getByTestId("dashboard-mode-region")).toHaveAttribute("aria-selected", "true");
@@ -126,4 +126,36 @@ test("probability and deterministic tabs work against the real forecast artifact
   await expect(deterministicTooltip).not.toContainText("Sample district representative point");
   await expect(deterministicTooltip).not.toContainText("Sample region representative point");
   expect(legacyRequests).toHaveLength(0);
+});
+
+test("46-day IFS-UNet view renders real tiles, area values and series from the backend", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const runsResponse = await request.get(`${API_BASE_URL}/subseasonal/runs`);
+  expect(runsResponse.ok()).toBe(true);
+  const runs = (await runsResponse.json()) as { active_run_id: string; runs: { lead_days: number }[] };
+  expect(runs.runs[0].lead_days).toBeGreaterThanOrEqual(7);
+
+  const tileResponses: number[] = [];
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname.startsWith("/subseasonal/tiles/")) {
+      tileResponses.push(response.status());
+    }
+  });
+
+  await page.goto("/?day=3", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("subseasonal-timeline")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("subseasonal-legend")).toContainText("Ghana mean");
+  await expect.poll(() => tileResponses.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  expect(tileResponses.every((status) => status === 200)).toBe(true);
+
+  const tooltip = await hoverRasterMap(page);
+  await expect(tooltip).toContainText(/mm/, { timeout: 30_000 });
+
+  await clickRasterMap(page);
+  await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/, { timeout: 30_000 });
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("46-day rain", { timeout: 30_000 });
+  await expect(page.getByTestId("subseasonal-calendar").locator("button")).toHaveCount(runs.runs[0].lead_days);
+
+  await page.getByTestId("ss-layer-dry_spell_days").click();
+  await expect(page.getByTestId("subseasonal-legend")).toContainText("days");
 });

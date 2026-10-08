@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import {
   forecastThemeAvailabilityReason,
@@ -25,6 +26,13 @@ import type {
   ForecastViewMode,
   SeasonProfile,
 } from "@/lib/types";
+
+export type DashboardView = "subseasonal" | "seasonal";
+
+const DASHBOARD_VIEW_OPTIONS: { value: DashboardView; label: string }[] = [
+  { value: "subseasonal", label: "Next 46 days" },
+  { value: "seasonal", label: "Seasonal" },
+];
 
 type DropdownOption = {
   value: string;
@@ -285,7 +293,19 @@ export function FloatingControls({
   isProductLoading,
   isRefreshing,
   onRetryProduct,
+  view = "seasonal",
+  onViewChange,
+  subseasonalHeader,
+  subseasonalContent,
+  subseasonalLegend,
+  collapsedSummary,
 }: {
+  collapsedSummary?: string | null;
+  view?: DashboardView;
+  onViewChange?: (view: DashboardView) => void;
+  subseasonalHeader?: ReactNode;
+  subseasonalContent?: ReactNode;
+  subseasonalLegend?: ReactNode;
   dashboardMode: DashboardMode;
   setDashboardMode: (mode: DashboardMode) => void;
   viewMode: ForecastViewMode;
@@ -335,13 +355,20 @@ export function FloatingControls({
       ? "floating-legend floating-legend-probability"
       : "floating-legend";
 
+  const isSubseasonal = view === "subseasonal";
+
   useEffect(() => {
+    if (isSubseasonal) {
+      // The 46-day view is ready on load; on phones keep the map in front.
+      setIsControlPanelOpen(false);
+      return;
+    }
     if (isForecastSelectionComplete) {
       setIsControlPanelOpen(false);
       return;
     }
     setIsControlPanelOpen(true);
-  }, [isForecastSelectionComplete, seasonProfile, subseason, thematicMode, viewMode]);
+  }, [isForecastSelectionComplete, isSubseasonal, seasonProfile, subseason, thematicMode, viewMode]);
 
   const forecastLegend = (
     <>
@@ -425,14 +452,56 @@ export function FloatingControls({
               <path d="M6 16l6-6 6 6" />
             </svg>
           </button>
+          {collapsedSummary && !isControlPanelOpen ? (
+            <button
+              type="button"
+              className="control-card-summary"
+              data-testid="mobile-controls-summary"
+              aria-controls={controlsId}
+              aria-expanded={false}
+              onClick={() => setIsControlPanelOpen(true)}
+            >
+              <span>{collapsedSummary}</span>
+              <span className="control-card-summary-action">Change</span>
+            </button>
+          ) : null}
           <div className="control-card-content" id={controlsId} data-testid="mobile-control-content">
             <div className="brand-block">
               <span className="eyebrow">
-                {viewMode === "probabilistic" ? "Probability forecast artifact" : "Deterministic forecast artifact"}
+                {isSubseasonal
+                  ? "Sub-seasonal rainfall outlook"
+                  : viewMode === "probabilistic"
+                    ? "Probability forecast artifact"
+                    : "Deterministic forecast artifact"}
               </span>
               <h1>Forecast Map</h1>
+              {isSubseasonal ? subseasonalHeader : null}
             </div>
 
+            {onViewChange ? (
+              <div className="control-group">
+                <div className="control-field">
+                  <span className="control-label">Outlook</span>
+                  <div className="segmented segmented-dual" role="tablist" aria-label="Forecast outlook">
+                    {DASHBOARD_VIEW_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="tab"
+                        aria-selected={view === option.value}
+                        className={view === option.value ? "active" : ""}
+                        data-testid={`dashboard-view-${option.value}`}
+                        onClick={() => onViewChange(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {isSubseasonal ? null : (
             <div className="control-group">
               <div className="control-field">
                 <span className="control-label">Forecast view</span>
@@ -453,6 +522,9 @@ export function FloatingControls({
                 </div>
               </div>
             </div>
+            )}
+
+            {isSubseasonal ? subseasonalContent : null}
 
             <div className="control-group">
               <div className="control-field">
@@ -482,6 +554,8 @@ export function FloatingControls({
               </div>
             </div>
 
+            {isSubseasonal ? null : (
+            <>
             <div className="control-group control-group-primary">
               <DropdownField
                 label="Variable"
@@ -608,12 +682,20 @@ export function FloatingControls({
                 </section>
               </div>
             ) : null}
+            </>
+            )}
           </div>
         </div>
       </div>
-      <section className={legendClassName} aria-label="Forecast legend">
-        {forecastLegend}
-      </section>
+      {isSubseasonal ? (
+        <section className="floating-legend floating-legend-subseasonal" aria-label="Forecast timeline and legend">
+          {subseasonalLegend}
+        </section>
+      ) : (
+        <section className={legendClassName} aria-label="Forecast legend">
+          {forecastLegend}
+        </section>
+      )}
     </div>
   );
 }

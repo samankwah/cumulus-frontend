@@ -7,3 +7,7 @@ playwright-report
 test-results
 *.log
 *.err.log
+
+# Raw forecast data lives in Azure / the backend ingest, never in this repo.
+Unet/
+*.nc

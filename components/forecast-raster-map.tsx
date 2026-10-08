@@ -56,6 +56,8 @@ const NEIGHBOUR_BORDERS_URL = "/data/west_africa_neighbour_borders.geojson";
 const COASTLINE_URL = "/data/west_africa_coastline.geojson";
 /** Ghana's outer outline, from the union of its region polygons (slivers and lake holes dropped). */
 const GHANA_OUTLINE_URL = "/data/ghana_outline.geojson";
+/** OSM water areas (lakes, reservoirs) of ~3 km² or more, clipped to Ghana; drawn over the forecast so it never paints open water. */
+const WATER_AREAS_URL = "/data/ghana_water_areas.geojson";
 /**
  * The Esri base draws thin dashed country boundaries that can't be switched off, and they drift up
  * to ~10px from our data. A wide stroke in the basemap's land colour hides them; it sits below the
@@ -84,6 +86,7 @@ function borderMaskWeight(zoom: number) {
 const COUNTRY_BORDER_STYLE = { color: "#3d4a55", weight: 1.4, opacity: 0.9, lineCap: "round" as const };
 const COASTLINE_STYLE = { color: "#3d4a55", weight: 1.4, opacity: 0.9 };
 const GHANA_OUTLINE_STYLE = { color: "#26313a", weight: 1.8, opacity: 0.95, lineJoin: "round" as const };
+const WATER_AREA_STYLE = { color: "#6f93b0", weight: 0.6, opacity: 0.9, fillColor: "#9dbbd3", fillOpacity: 1 };
 
 function useGeoJson(url: string) {
   const [data, setData] = useState<FeatureCollection | null>(null);
@@ -130,6 +133,13 @@ function GhanaOutline() {
   const outline = useGeoJson(GHANA_OUTLINE_URL);
   return outline ? (
     <GeoJSON data={outline} interactive={false} pane="ghana-outline-pane" style={() => GHANA_OUTLINE_STYLE} />
+  ) : null;
+}
+
+function WaterAreas() {
+  const water = useGeoJson(WATER_AREAS_URL);
+  return water ? (
+    <GeoJSON data={water} interactive={false} pane="water-areas-pane" style={() => WATER_AREA_STYLE} />
   ) : null;
 }
 
@@ -941,6 +951,9 @@ export function ForecastRasterMap({
         ) : product ? (
           <TileLayer url={product.tile_url} opacity={forecastTileOpacity(product)} pane="forecast-raster-pane" />
         ) : null}
+      </Pane>
+      <Pane name="water-areas-pane" style={{ zIndex: 330, pointerEvents: "none" }}>
+        <WaterAreas />
       </Pane>
       <Pane name="forecast-feature-pane" style={{ zIndex: 470 }}>
         <ForecastMapOverlay

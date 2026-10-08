@@ -55,6 +55,10 @@ export function SteppedLegend({ layer }: { layer: SubseasonalLayer }) {
           ) : null}
         </span>
         {legend.note ? <span className="ss-legend-note">{legend.note}</span> : null}
+        {/* Esri's terms require a visible basemap credit; the map's own badge is hidden in this view. */}
+        <span className="ss-legend-credit" title="Basemap © Esri, HERE, Garmin, © OpenStreetMap contributors">
+          Basemap © Esri
+        </span>
       </figcaption>
     </figure>
   );

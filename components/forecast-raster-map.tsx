@@ -49,33 +49,97 @@ const DRAWER_CLEARANCE = 28;
 const MAP_STROKE = "rgba(32, 41, 50, 0.92)";
 const MAP_STROKE_SOFT = "rgba(73, 88, 104, 0.7)";
 const MAP_HALO = "rgba(119, 134, 150, 0.42)";
-const COUNTRY_BORDERS_URL = "/data/west_africa_country_borders.geojson";
+/** Every border, Ghana's included: only used to mask the basemap's own dashed boundaries. */
+const ALL_BORDERS_URL = "/data/west_africa_country_borders.geojson";
+/** Borders between neighbours, with Ghana's stretch removed (its outline comes from its regions). */
+const NEIGHBOUR_BORDERS_URL = "/data/west_africa_neighbour_borders.geojson";
 const COASTLINE_URL = "/data/west_africa_coastline.geojson";
-const COUNTRY_BORDER_STYLE = { color: "#36564f", weight: 2, opacity: 0.9 };
-const COASTLINE_STYLE = { color: "#173b37", weight: 2.6, opacity: 0.95 };
+/** Ghana's outer outline, from the union of its region polygons (slivers and lake holes dropped). */
+const GHANA_OUTLINE_URL = "/data/ghana_outline.geojson";
+/**
+ * The Esri base draws thin dashed country boundaries that can't be switched off, and they drift up
+ * to ~10px from our data. A wide stroke in the basemap's land colour hides them; it sits below the
+ * forecast raster, so inside Ghana the forecast covers it and nothing visibly changes.
+ */
+const BORDER_MASK_STYLE = { color: "#efefef", opacity: 1, lineCap: "round" as const, lineJoin: "round" as const };
+/** The drift is a ground distance (~0.08°), so the mask must widen as the map zooms in. */
+const BORDER_MASK_DRIFT_DEGREES = 0.08;
+/**
+ * Beyond this zoom the generalised border data drifts too far from the true line to mask (and
+ * looks visibly wrong), so neighbour borders and coastline hand back to the basemap's precise ones.
+ */
+const CUSTOM_BORDERS_MAX_ZOOM = 9;
 
-function CountryOutlines() {
-  const [borders, setBorders] = useState<FeatureCollection | null>(null);
-  const [coastline, setCoastline] = useState<FeatureCollection | null>(null);
+function useMapZoom() {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+  return zoom;
+}
 
+function borderMaskWeight(zoom: number) {
+  const driftPixels = (BORDER_MASK_DRIFT_DEGREES * 256 * 2 ** zoom) / 360;
+  return Math.min(64, Math.max(14, 2 * driftPixels + 4));
+}
+const COUNTRY_BORDER_STYLE = { color: "#3d4a55", weight: 1.4, opacity: 0.9, lineCap: "round" as const };
+const COASTLINE_STYLE = { color: "#3d4a55", weight: 1.4, opacity: 0.9 };
+const GHANA_OUTLINE_STYLE = { color: "#26313a", weight: 1.8, opacity: 0.95, lineJoin: "round" as const };
+
+function useGeoJson(url: string) {
+  const [data, setData] = useState<FeatureCollection | null>(null);
   useEffect(() => {
     let cancelled = false;
-    const load = (url: string, set: (data: FeatureCollection) => void) =>
-      fetch(url)
-        .then((response) => (response.ok ? (response.json() as Promise<FeatureCollection>) : null))
-        .then((data) => {
-          if (data && !cancelled) {
-            set(data);
-          }
-        })
-        .catch(() => undefined);
-    void load(COUNTRY_BORDERS_URL, setBorders);
-    void load(COASTLINE_URL, setCoastline);
+    fetch(url)
+      .then((response) => (response.ok ? (response.json() as Promise<FeatureCollection>) : null))
+      .then((payload) => {
+        if (payload && !cancelled) {
+          setData(payload);
+        }
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [url]);
+  return data;
+}
 
+/**
+ * Solid, thick country borders and coastline over the grey basemap. Both files have Ghana's own
+ * stretch removed: Ghana's outline comes from its region polygons, and drawing it twice from two
+ * differently generalised datasets produced parallel, drifting lines.
+ */
+function BasemapBorderMask() {
+  const borders = useGeoJson(ALL_BORDERS_URL);
+  const zoom = useMapZoom();
+  const weight = borderMaskWeight(zoom);
+  return borders && zoom <= CUSTOM_BORDERS_MAX_ZOOM ? (
+    <GeoJSON
+      // Re-mount on width change: GeoJSON styles are applied when the layer is created.
+      key={weight}
+      data={borders}
+      interactive={false}
+      pane="basemap-border-mask-pane"
+      style={() => ({ ...BORDER_MASK_STYLE, weight })}
+    />
+  ) : null;
+}
+
+/** Ghana drawn as strongly as its neighbours' borders, above the region lines. */
+function GhanaOutline() {
+  const outline = useGeoJson(GHANA_OUTLINE_URL);
+  return outline ? (
+    <GeoJSON data={outline} interactive={false} pane="ghana-outline-pane" style={() => GHANA_OUTLINE_STYLE} />
+  ) : null;
+}
+
+function CountryOutlines() {
+  const borders = useGeoJson(NEIGHBOUR_BORDERS_URL);
+  const coastline = useGeoJson(COASTLINE_URL);
+  const zoom = useMapZoom();
+  if (zoom > CUSTOM_BORDERS_MAX_ZOOM) {
+    return null;
+  }
   return (
     <>
       {borders ? (
@@ -862,6 +926,9 @@ export function ForecastRasterMap({
           pane="basemap-labels-pane"
         />
       </Pane>
+      <Pane name="basemap-border-mask-pane" style={{ zIndex: 310, pointerEvents: "none" }}>
+        <BasemapBorderMask />
+      </Pane>
       <Pane name="forecast-raster-pane" className="forecast-raster-pane" style={{ zIndex: 320 }}>
         {raster ? (
           <CrossfadeTileLayer
@@ -894,8 +961,11 @@ export function ForecastRasterMap({
           onSelectRegion={onSelectRegion}
         />
       </Pane>
-      <Pane name="country-outline-pane" style={{ zIndex: 480, pointerEvents: "none" }}>
+      <Pane name="country-outline-pane" style={{ zIndex: 440, pointerEvents: "none" }}>
         <CountryOutlines />
+      </Pane>
+      <Pane name="ghana-outline-pane" style={{ zIndex: 480, pointerEvents: "none" }}>
+        <GhanaOutline />
       </Pane>
       <Pane name="forecast-selection-pane" style={{ zIndex: 520 }}>
         {selectedPoint ? (

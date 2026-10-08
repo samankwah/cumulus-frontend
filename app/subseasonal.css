@@ -1935,3 +1935,9 @@
 .view-subseasonal .leaflet-control-attribution {
   display: none !important;
 }
+
+.ss-legend-credit {
+  color: var(--muted);
+  font-size: 0.66rem;
+  opacity: 0.8;
+}

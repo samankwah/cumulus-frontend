@@ -327,6 +327,9 @@ function LayerSections({
   );
 }
 
+/** "Download CSV" and "Copy link" in the drawer footer: switched off for now, at the user's request. */
+const SHOW_DRAWER_ACTIONS = false;
+
 export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalState; onSeekDay: (day: number) => void }) {
   const { series, run, layer } = state;
   const header = headerFor(state);
@@ -452,21 +455,23 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
               ) : null}
             </section>
           </div>
-          <div className="drawer-actions ss-drawer-actions ss-drawer-footer">
-            <button
-              type="button"
-              className="ghost-button"
-              data-testid="subseasonal-download"
-              onClick={() =>
-                downloadText(`${series.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${series.run_id}.csv`, seriesToCsv(series, run))
-              }
-            >
-              Download CSV
-            </button>
-            <button type="button" className="ghost-button" onClick={copyLink}>
-              {copied ? "Link copied" : "Copy link"}
-            </button>
-          </div>
+          {SHOW_DRAWER_ACTIONS ? (
+            <div className="drawer-actions ss-drawer-actions ss-drawer-footer">
+              <button
+                type="button"
+                className="ghost-button"
+                data-testid="subseasonal-download"
+                onClick={() =>
+                  downloadText(`${series.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${series.run_id}.csv`, seriesToCsv(series, run))
+                }
+              >
+                Download CSV
+              </button>
+              <button type="button" className="ghost-button" onClick={copyLink}>
+                {copied ? "Link copied" : "Copy link"}
+              </button>
+            </div>
+          ) : null}
         </>
       )}
     </aside>

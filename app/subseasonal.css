@@ -1123,6 +1123,11 @@
     right: calc(clamp(380px, 31vw, 560px) + var(--ss-gutter));
   }
 
+  /* Zoom buttons step left of the open drawer, like the dock. */
+  .view-subseasonal.ss-drawer-open .map-zoom {
+    right: calc(clamp(380px, 31vw, 560px) + 2 * clamp(16px, 1.8vw, 24px));
+  }
+
   .view-subseasonal .floating-controls {
     max-height: calc(100dvh - 2 * clamp(16px, 1.8vw, 24px));
     overflow-y: auto;
@@ -1133,6 +1138,10 @@
 @media (min-width: 861px) and (max-width: 1180px) {
   .view-subseasonal.ss-drawer-open .floating-legend.floating-legend-subseasonal {
     right: calc(min(480px, 100vw) + var(--ss-gutter));
+  }
+
+  .view-subseasonal.ss-drawer-open .map-zoom {
+    right: calc(min(480px, 100vw) + 2 * clamp(16px, 1.8vw, 24px));
   }
 }
 
@@ -1751,6 +1760,31 @@
 @media (max-width: 860px) {
   .view-subseasonal .floating-controls {
     display: none;
+  }
+
+  /* Phones: zoom buttons sit on the right, just under the top bar. */
+  .view-subseasonal .map-zoom {
+    top: calc(max(10px, env(safe-area-inset-top)) + 64px);
+    right: max(10px, env(safe-area-inset-right));
+  }
+
+  /* The dock is the only panel at the bottom here: run it edge to edge as a bottom sheet. */
+  .view-subseasonal .chrome-layer {
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+  }
+
+  .view-subseasonal .floating-legend.floating-legend-subseasonal {
+    padding:
+      12px
+      max(14px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 24px 24px 0 0;
   }
 
   .ss-topbar {

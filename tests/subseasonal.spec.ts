@@ -263,9 +263,8 @@ test("clicking a region opens the 46-day drawer with chart, spells, weeks and ex
   expect(requests.some((url) => url.pathname === "/subseasonal/area" && url.searchParams.get("level") === "region")).toBe(true);
   await expect(page).toHaveURL(/area=region/);
 
-  const download = page.waitForEvent("download");
-  await page.getByTestId("subseasonal-download").click();
-  expect((await download).suggestedFilename()).toMatch(/\.csv$/);
+  // Download and copy-link are switched off in the drawer for now.
+  await expect(page.getByTestId("subseasonal-download")).toHaveCount(0);
 
   // Switching layer swaps the drawer to that layer's content and advice.
   const rainHeadline = await page.getByTestId("subseasonal-advisory-headline").textContent();

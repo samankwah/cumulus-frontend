@@ -27,7 +27,7 @@ const ForecastRasterMap = dynamic(
   { ssr: false },
 );
 
-const SUBSEASONAL_TILE_OPACITY = 0.86;
+const SUBSEASONAL_TILE_OPACITY = 0.66;
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);

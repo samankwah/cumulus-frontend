@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
+import type { FeatureCollection } from "geojson";
 import type { LatLngBounds, LatLngBoundsExpression, LeafletMouseEvent } from "leaflet";
 import L from "leaflet";
 import { CircleMarker, GeoJSON, MapContainer, Pane, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -38,6 +39,44 @@ const DRAWER_CLEARANCE = 28;
 const MAP_STROKE = "rgba(32, 41, 50, 0.92)";
 const MAP_STROKE_SOFT = "rgba(73, 88, 104, 0.7)";
 const MAP_HALO = "rgba(119, 134, 150, 0.42)";
+const COUNTRY_BORDERS_URL = "/data/west_africa_country_borders.geojson";
+const COASTLINE_URL = "/data/west_africa_coastline.geojson";
+const COUNTRY_BORDER_STYLE = { color: "#36564f", weight: 2, opacity: 0.9 };
+const COASTLINE_STYLE = { color: "#173b37", weight: 2.6, opacity: 0.95 };
+
+function CountryOutlines() {
+  const [borders, setBorders] = useState<FeatureCollection | null>(null);
+  const [coastline, setCoastline] = useState<FeatureCollection | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = (url: string, set: (data: FeatureCollection) => void) =>
+      fetch(url)
+        .then((response) => (response.ok ? (response.json() as Promise<FeatureCollection>) : null))
+        .then((data) => {
+          if (data && !cancelled) {
+            set(data);
+          }
+        })
+        .catch(() => undefined);
+    void load(COUNTRY_BORDERS_URL, setBorders);
+    void load(COASTLINE_URL, setCoastline);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <>
+      {borders ? (
+        <GeoJSON data={borders} interactive={false} pane="country-outline-pane" style={() => COUNTRY_BORDER_STYLE} />
+      ) : null}
+      {coastline ? (
+        <GeoJSON data={coastline} interactive={false} pane="country-outline-pane" style={() => COASTLINE_STYLE} />
+      ) : null}
+    </>
+  );
+}
 
 /** Padding that keeps Ghana clear of the floating panels (left column and bottom dock). */
 function getChromeAwarePadding(map: L.Map) {
@@ -734,17 +773,18 @@ export function ForecastRasterMap({
     >
       <FitBoundsOnce fitKey={fitKey} />
       <RasterClickHandler onSelectPoint={onSelectPoint} />
-      {/*
-        Keyless basemap. CARTO's anonymous basemap tiles now return an
-        "API KEY REQUIRED" watermark, so we use the standard OpenStreetMap
-        tiles, kept subtle with a low opacity.
-      */}
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        maxZoom={19}
-        opacity={0.45}
+        attribution="Basemap &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+        url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+        maxZoom={16}
       />
+      <Pane name="basemap-labels-pane" style={{ zIndex: 450, pointerEvents: "none" }}>
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={16}
+          pane="basemap-labels-pane"
+        />
+      </Pane>
       <Pane name="forecast-raster-pane" className="forecast-raster-pane" style={{ zIndex: 320 }}>
         {raster ? (
           <CrossfadeTileLayer
@@ -776,6 +816,9 @@ export function ForecastRasterMap({
           onSelectDistrict={onSelectDistrict}
           onSelectRegion={onSelectRegion}
         />
+      </Pane>
+      <Pane name="country-outline-pane" style={{ zIndex: 480, pointerEvents: "none" }}>
+        <CountryOutlines />
       </Pane>
       <Pane name="forecast-selection-pane" style={{ zIndex: 520 }}>
         {selectedPoint ? (

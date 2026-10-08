@@ -107,28 +107,6 @@
   margin-top: 12px;
 }
 
-/* Onset front on the timeline: contiguous columns, green like the map's "Started" class. The
-   columns run edge to edge, so clip them to the track's rounded corners. */
-.ss-bars.progress {
-  overflow: hidden;
-  border-radius: 8px;
-}
-
-.ss-bars.progress .ss-bar {
-  border-radius: 0;
-  background: rgba(46, 125, 79, 0.28);
-}
-
-.ss-bars.progress .ss-bar.past,
-.ss-bars.progress .ss-bar.current {
-  background: var(--ss-onset);
-}
-
-/* The rain bars' white ring reads as a stray box between touching columns; the handle marks the day. */
-.ss-bars.progress .ss-bar.current {
-  box-shadow: none;
-}
-
 .ss-run.ss-run-inline {
   display: flex;
   flex: 1;

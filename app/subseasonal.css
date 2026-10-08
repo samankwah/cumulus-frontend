@@ -1941,3 +1941,34 @@
   font-size: 0.66rem;
   opacity: 0.8;
 }
+
+/* Day maps of an indicator: a named class with a swatch instead of a numeric bar. */
+.ss-legend-class-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.ss-legend-class-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ss-legend-class-list strong {
+  font-weight: 800;
+}
+
+.ss-legend-swatch {
+  width: 22px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  box-shadow: var(--map-card-shadow);
+}

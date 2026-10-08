@@ -21,10 +21,41 @@ function textColorOn(hex: string) {
   return luminance > 0.36 ? "#1e2a33" : "#ffffff";
 }
 
+/**
+ * Day maps of an indicator flag each cell (a rain day, or inside a spell). The key names the class
+ * with a swatch, and the caption reads the area mean as the share of Ghana that is flagged.
+ */
+function ClassLegend({ layer }: { layer: SubseasonalLayer }) {
+  const { legend, stats } = layer;
+  const share = stats.mean === null ? null : Math.round(stats.mean);
+  return (
+    <figure className="ss-legend ss-legend-classes" data-testid="subseasonal-legend" aria-label={`${layer.layer_label} legend`}>
+      <ul className="ss-legend-class-list">
+        {legend.bins.map((bin) => (
+          <li key={bin.label}>
+            <span className="ss-legend-swatch" style={{ backgroundColor: bin.color }} aria-hidden="true" />
+            {bin.label}
+            {share !== null ? <strong> across {share}% of Ghana</strong> : null}
+          </li>
+        ))}
+      </ul>
+      <figcaption className="ss-legend-caption">
+        {legend.note ? <span className="ss-legend-note">{legend.note}</span> : <span />}
+        <span className="ss-legend-credit" title="Basemap © Esri, HERE, Garmin, © OpenStreetMap contributors">
+          Basemap © Esri
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
 /** Windy-style scale: the unit and each band's lower edge are written inside the colour bar. */
 export function SteppedLegend({ layer }: { layer: SubseasonalLayer }) {
   const { legend, stats } = layer;
   const unit = legend.unit;
+  if (legend.categorical) {
+    return <ClassLegend layer={layer} />;
+  }
   return (
     <figure className="ss-legend" data-testid="subseasonal-legend" aria-label={`${layer.layer_label} legend in ${unit}`}>
       <div className="ss-legend-bar" role="list">

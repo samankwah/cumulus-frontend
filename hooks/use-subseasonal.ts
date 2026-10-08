@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadMapData } from "@/lib/map-data";
 import {
   dayIndexForDate,
+  defaultAggregation,
+  layerAggregations,
   formatSubseasonalError,
   getSubseasonalAreaValues,
   getSubseasonalLayer,
@@ -90,7 +92,13 @@ export function useSubseasonal({
   const run = useMemo(() => runs.find((item) => item.run_id === runId) ?? null, [runId, runs]);
   const dayCount = run?.lead_days ?? 0;
   const weekCount = run?.weeks.length ?? 0;
-  const effectiveAggregation: SubseasonalAggregation = layer === "rainfall" ? aggregation : "total";
+  // The chosen period is shared by every layer; fall back only if this run does not offer it.
+  const aggregations = useMemo(() => layerAggregations(run, layer), [layer, run]);
+  const effectiveAggregation: SubseasonalAggregation = aggregations.includes(aggregation)
+    ? aggregation
+    : aggregations.includes(defaultAggregation(layer))
+      ? defaultAggregation(layer)
+      : aggregations[0];
   const index = effectiveAggregation === "daily" ? Math.max(day, 1) : effectiveAggregation === "weekly" ? week : 1;
   const indexCount = effectiveAggregation === "daily" ? dayCount : effectiveAggregation === "weekly" ? weekCount : 1;
   const hasTimeline = effectiveAggregation !== "total" && indexCount > 1;
@@ -324,15 +332,17 @@ export function useSubseasonal({
     [aggregation, day, run, week],
   );
 
-  /** Jump the map to one day's rainfall (from the drawer chart or calendar). */
+  /** Jump the map to one day (drawer chart or calendar), on this layer when it has daily maps. */
   const seekDay = useCallback(
     (nextDay: number) => {
       setIsPlaying(false);
-      setLayerState("rainfall");
+      if (!layerAggregations(run, layer).includes("daily")) {
+        setLayerState("rainfall");
+      }
       setAggregationState("daily");
       setDayState(Math.min(Math.max(1, nextDay), Math.max(dayCount, 1)));
     },
-    [dayCount],
+    [dayCount, layer, run],
   );
 
   const selectPoint = useCallback((latitude: number, longitude: number) => {
@@ -367,6 +377,8 @@ export function useSubseasonal({
     layer,
     setLayer,
     aggregation: effectiveAggregation,
+    /** Periods this layer offers in the current run, in display order. */
+    aggregations,
     setAggregation,
     index,
     indexCount,

@@ -227,6 +227,22 @@ function fitGhana(map: L.Map, padding: ReturnType<typeof getChromeAwarePadding>,
   fitWhenIdle(map, GHANA_BOUNDS, { ...padding, animate });
 }
 
+/** What the map controls drawn outside the map (zoom and reset, in the chrome layer) need from it. */
+export type MapControlsHandle = {
+  map: L.Map;
+  /** Back to the default view: all of Ghana, clear of the floating panels. */
+  resetView: () => void;
+};
+
+function MapReady({ onMapReady }: { onMapReady: (handle: MapControlsHandle | null) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    onMapReady({ map, resetView: () => fitGhana(map, getChromeAwarePadding(map), true) });
+    return () => onMapReady(null);
+  }, [map, onMapReady]);
+  return null;
+}
+
 function FitBoundsOnce({ fitKey }: { fitKey: string }) {
   const map = useMap();
   const fittedKeysRef = useRef<Set<string>>(new Set());
@@ -892,6 +908,7 @@ export function ForecastRasterMap({
   raster = null,
   areaHover = null,
   fitKey = "initial",
+  onMapReady,
 }: {
   /** Changing this refits Ghana to the space left by the floating panels (once per key). */
   fitKey?: string;
@@ -910,6 +927,7 @@ export function ForecastRasterMap({
   /** 46-day view: a crossfading raster driven by the timeline instead of a seasonal product. */
   raster?: { url: string | null; opacity: number; prefetchUrls: string[]; onLoad: (url: string) => void } | null;
   areaHover?: AreaHoverProvider | null;
+  onMapReady?: (handle: MapControlsHandle | null) => void;
 }) {
   return (
     <MapContainer
@@ -923,6 +941,7 @@ export function ForecastRasterMap({
       className="district-map"
     >
       <FitBoundsOnce fitKey={fitKey} />
+      {onMapReady ? <MapReady onMapReady={onMapReady} /> : null}
       <RasterClickHandler onSelectPoint={onSelectPoint} />
       <TileLayer
         attribution="Basemap &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"

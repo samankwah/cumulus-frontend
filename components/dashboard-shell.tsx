@@ -6,7 +6,8 @@ import dynamic from "next/dynamic";
 import { DashboardDrawer } from "@/components/dashboard-drawer";
 import { FloatingControls } from "@/components/floating-controls";
 import type { DashboardView } from "@/components/floating-controls";
-import type { AreaHoverProvider } from "@/components/forecast-raster-map";
+import type { AreaHoverProvider, MapControlsHandle } from "@/components/forecast-raster-map";
+import { MapZoomControls } from "@/components/map-zoom-controls";
 import { RunBadge, SubseasonalDock, SubseasonalPanel, SubseasonalTopBar } from "@/components/subseasonal/subseasonal-panel";
 import { SubseasonalDrawer } from "@/components/subseasonal/subseasonal-drawer";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
@@ -45,6 +46,7 @@ const SEASONAL_ENABLED = process.env.NEXT_PUBLIC_ENABLE_SEASONAL === "1";
 
 export function DashboardShell() {
   const [view, setView] = useState<DashboardView>("subseasonal");
+  const [mapControls, setMapControls] = useState<MapControlsHandle | null>(null);
   const [hasReadUrl, setHasReadUrl] = useState(false);
 
   // The view comes from the URL on the client only (static export renders the default).
@@ -242,9 +244,11 @@ export function DashboardShell() {
             raster={raster}
             areaHover={areaHover}
             fitKey={isSubseasonal ? (layerMeta ? "subseasonal-ready" : "subseasonal") : "seasonal"}
+            onMapReady={setMapControls}
           />
 
           <div className="chrome-layer">
+            <MapZoomControls controls={mapControls} />
             {isSubseasonal ? (
               <SubseasonalTopBar state={subseasonal} onSeasonal={SEASONAL_ENABLED ? () => changeView("seasonal") : undefined} />
             ) : null}

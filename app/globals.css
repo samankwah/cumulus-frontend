@@ -173,6 +173,63 @@ button {
   display: contents;
 }
 
+/* Zoom buttons: a small stacked pill in the top-right corner of the map. */
+.map-zoom {
+  position: absolute;
+  top: clamp(16px, 1.8vw, 24px);
+  right: clamp(16px, 1.8vw, 24px);
+  z-index: 720;
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--map-panel-border);
+  border-radius: 16px;
+  background: var(--map-panel-surface);
+  box-shadow: var(--map-panel-shadow);
+  pointer-events: auto;
+  transition: right 220ms ease;
+}
+
+.map-zoom-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.map-zoom-button + .map-zoom-button {
+  border-top: 1px solid var(--line);
+}
+
+.map-zoom-button:hover:not(:disabled) {
+  background: var(--map-panel-surface-strong);
+}
+
+.map-zoom-button:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: -2px;
+}
+
+.map-zoom-button:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.map-zoom-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .floating-controls,
 .floating-banner,
 .floating-legend {

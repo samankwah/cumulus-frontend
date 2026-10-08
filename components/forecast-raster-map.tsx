@@ -32,6 +32,16 @@ const GHANA_BOUNDS: LatLngBoundsExpression = [
   [4.2, -3.3],
   [11.2, 1.4],
 ];
+/**
+ * Pan limit: Ghana plus a wide margin. The fit centres Ghana in whatever space the panels leave, so
+ * the view itself sits far off-centre: ~5° south of the coast under a phone card, ~9° west of
+ * Ghana beside the desktop control panel, and as far east beside an open drawer. A tighter limit
+ * makes Leaflet clamp the view and slide Ghana back under the panels.
+ */
+const PAN_BOUNDS: LatLngBoundsExpression = [
+  [-8.0, -17.0],
+  [19.0, 12.0],
+];
 const MAP_PADDING_TOP_LEFT: [number, number] = [36, 48];
 const MAP_PADDING_BOTTOM_RIGHT: [number, number] = [36, 48];
 const DRAWER_CLEARANCE = 28;
@@ -39,32 +49,69 @@ const MAP_STROKE = "rgba(32, 41, 50, 0.92)";
 const MAP_STROKE_SOFT = "rgba(73, 88, 104, 0.7)";
 const MAP_HALO = "rgba(119, 134, 150, 0.42)";
 
-/** Padding that keeps Ghana clear of the floating panels (left column and bottom dock). */
+/**
+ * Padding that keeps the map's subject clear of every floating panel: the left control column, the
+ * phone top bar, the bottom dock and an open location drawer on the right. A panel slid off-screen
+ * (the control column hides on mid-size screens while the drawer is open) measures off the map and
+ * so adds nothing.
+ */
 function getChromeAwarePadding(map: L.Map) {
   const mapRect = map.getContainer().getBoundingClientRect();
   const stage = map.getContainer().closest(".atlas-stage");
   let left = MAP_PADDING_TOP_LEFT[1];
+  let top = MAP_PADDING_TOP_LEFT[0];
+  let right = MAP_PADDING_BOTTOM_RIGHT[0];
   let bottom = MAP_PADDING_BOTTOM_RIGHT[1];
-  const panels = stage ? stage.querySelectorAll<HTMLElement>(".floating-controls .control-card, .floating-legend") : [];
+  const panels = stage
+    ? stage.querySelectorAll<HTMLElement>(
+        '.floating-controls .control-card, .floating-legend, .ss-topbar, [data-testid="dashboard-drawer"].open',
+      )
+    : [];
   panels.forEach((panel) => {
     const rect = panel.getBoundingClientRect();
     if (!rect.width || !rect.height) {
       return;
     }
     const isLeftColumn = rect.width < mapRect.width * 0.5 && rect.height > mapRect.height * 0.35 && rect.left < mapRect.left + 80;
-    if (isLeftColumn) {
+    const isTopBar = rect.width > mapRect.width * 0.5 && rect.top < mapRect.top + 60 && rect.height < mapRect.height * 0.25;
+    // A full-screen drawer (phones) hides the map entirely; there is nothing to pad for.
+    const isRightColumn =
+      rect.left > mapRect.left + mapRect.width * 0.4 && rect.height > mapRect.height * 0.45 && rect.width < mapRect.width * 0.9;
+    if (isRightColumn) {
+      right = Math.max(right, mapRect.right - rect.left + DRAWER_CLEARANCE);
+    } else if (isLeftColumn) {
       left = Math.max(left, rect.right - mapRect.left + 24);
+    } else if (isTopBar) {
+      top = Math.max(top, rect.bottom - mapRect.top + 12);
     } else if (rect.bottom > mapRect.bottom - 60) {
       bottom = Math.max(bottom, mapRect.bottom - rect.top + 16);
     }
   });
   // Never squeeze the country below a usable size.
-  left = Math.min(left, mapRect.width * 0.45);
+  right = Math.min(right, mapRect.width * 0.5);
+  left = Math.min(left, mapRect.width * 0.55, Math.max(MAP_PADDING_TOP_LEFT[1], mapRect.width * 0.75 - right));
   bottom = Math.min(bottom, mapRect.height * 0.5);
   return {
-    paddingTopLeft: [left, MAP_PADDING_TOP_LEFT[0]] as [number, number],
-    paddingBottomRight: [MAP_PADDING_BOTTOM_RIGHT[0], bottom] as [number, number],
+    paddingTopLeft: [left, top] as [number, number],
+    paddingBottomRight: [right, bottom] as [number, number],
   };
+}
+
+/**
+ * fitBounds that survives a running zoom animation. Leaflet discards a fit issued mid-animation (the
+ * transition end restores its own target), so wait for the zoom to finish first.
+ */
+function fitWhenIdle(map: L.Map, bounds: LatLngBoundsExpression, options: L.FitBoundsOptions) {
+  const run = () => map.fitBounds(bounds, options);
+  if ((map as unknown as { _animatingZoom?: boolean })._animatingZoom) {
+    map.once("zoomend", run);
+  } else {
+    run();
+  }
+}
+
+function fitGhana(map: L.Map, padding: ReturnType<typeof getChromeAwarePadding>, animate: boolean) {
+  fitWhenIdle(map, GHANA_BOUNDS, { ...padding, animate });
 }
 
 function FitBoundsOnce({ fitKey }: { fitKey: string }) {
@@ -76,18 +123,59 @@ function FitBoundsOnce({ fitKey }: { fitKey: string }) {
       return;
     }
     const isFirstFit = fittedKeysRef.current.size === 0;
-    fittedKeysRef.current.add(fitKey);
     if (isFirstFit) {
+      // Instant, so the panel-aware refit below never lands inside a running animation.
       map.fitBounds(GHANA_BOUNDS, {
         paddingTopLeft: MAP_PADDING_TOP_LEFT,
         paddingBottomRight: MAP_PADDING_BOTTOM_RIGHT,
+        animate: false,
       });
     }
-    // Refit once the floating panels have laid out, so they do not cover the country.
+    // Refit once the floating panels have laid out, so they do not cover the country. The key is
+    // recorded only when the refit runs: React may run this effect twice and cancel the first timer.
     const handle = window.setTimeout(() => {
-      map.fitBounds(GHANA_BOUNDS, { ...getChromeAwarePadding(map), animate: !isFirstFit });
+      fittedKeysRef.current.add(fitKey);
+      fitGhana(map, getChromeAwarePadding(map), !isFirstFit);
     }, 120);
     return () => window.clearTimeout(handle);
+  }, [fitKey, map]);
+
+  // The dock grows once timeline data arrives, after the refit above. Refit again when
+  // the floating legend resizes, until the user takes over by dragging or zooming.
+  useEffect(() => {
+    const stage = map.getContainer().closest(".atlas-stage");
+    if (!stage || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    let userMoved = false;
+    let handle: number | undefined;
+    const markUserMoved = () => {
+      userMoved = true;
+    };
+    const container = map.getContainer();
+    map.on("dragstart", markUserMoved);
+    container.addEventListener("wheel", markUserMoved, { passive: true });
+    container.addEventListener("touchstart", markUserMoved, { passive: true });
+    container.addEventListener("dblclick", markUserMoved);
+
+    const observer = new ResizeObserver(() => {
+      window.clearTimeout(handle);
+      handle = window.setTimeout(() => {
+        if (!userMoved) {
+          fitGhana(map, getChromeAwarePadding(map), true);
+        }
+      }, 150);
+    });
+    stage.querySelectorAll<HTMLElement>(".floating-legend").forEach((el) => observer.observe(el));
+
+    return () => {
+      window.clearTimeout(handle);
+      observer.disconnect();
+      map.off("dragstart", markUserMoved);
+      container.removeEventListener("wheel", markUserMoved);
+      container.removeEventListener("touchstart", markUserMoved);
+      container.removeEventListener("dblclick", markUserMoved);
+    };
   }, [fitKey, map]);
 
   return null;
@@ -307,32 +395,9 @@ function findSelectedLayer(
   return selectedLayer;
 }
 
+/** Selection focus must clear the same panels as the country fit, the drawer included. */
 function getDrawerAwarePadding(map: L.Map) {
-  const mapElement = map.getContainer();
-  const stage = mapElement.closest(".atlas-stage");
-  const drawer = stage?.querySelector<HTMLElement>('[data-testid="dashboard-drawer"].open');
-  if (!drawer) {
-    return {
-      paddingTopLeft: MAP_PADDING_TOP_LEFT,
-      paddingBottomRight: MAP_PADDING_BOTTOM_RIGHT,
-    };
-  }
-
-  const mapRect = mapElement.getBoundingClientRect();
-  const drawerRect = drawer.getBoundingClientRect();
-  const intersectionWidth = Math.max(0, Math.min(mapRect.right, drawerRect.right) - Math.max(mapRect.left, drawerRect.left));
-  const intersectionHeight = Math.max(0, Math.min(mapRect.bottom, drawerRect.bottom) - Math.max(mapRect.top, drawerRect.top));
-
-  const isBottomOverlay = intersectionWidth >= mapRect.width * 0.75 && intersectionHeight > 0;
-  const isSideOverlay = !isBottomOverlay && intersectionHeight >= mapRect.height * 0.45 && intersectionWidth > 0;
-
-  return {
-    paddingTopLeft: MAP_PADDING_TOP_LEFT,
-    paddingBottomRight: [
-      MAP_PADDING_BOTTOM_RIGHT[0] + (isSideOverlay ? intersectionWidth + DRAWER_CLEARANCE : 0),
-      MAP_PADDING_BOTTOM_RIGHT[1] + (isBottomOverlay ? intersectionHeight + DRAWER_CLEARANCE : 0),
-    ] as [number, number],
-  };
+  return getChromeAwarePadding(map);
 }
 
 function KeepSelectionVisible({
@@ -359,7 +424,19 @@ function KeepSelectionVisible({
       }
 
       const { paddingTopLeft, paddingBottomRight } = getDrawerAwarePadding(map);
-      map.fitBounds(bounds, {
+      // Move only when the selection is actually hidden: needless motion disorients.
+      const size = map.getSize();
+      const northWest = map.latLngToContainerPoint(bounds.getNorthWest());
+      const southEast = map.latLngToContainerPoint(bounds.getSouthEast());
+      const alreadyVisible =
+        northWest.x >= paddingTopLeft[0] &&
+        northWest.y >= paddingTopLeft[1] &&
+        southEast.x <= size.x - paddingBottomRight[0] &&
+        southEast.y <= size.y - paddingBottomRight[1];
+      if (alreadyVisible) {
+        return;
+      }
+      fitWhenIdle(map, bounds, {
         paddingTopLeft,
         paddingBottomRight,
         maxZoom: map.getZoom(),
@@ -725,11 +802,11 @@ export function ForecastRasterMap({
     <MapContainer
       center={[7.9, -1.1]}
       zoom={6.3}
-      minZoom={6}
+      minZoom={5.5}
       zoomSnap={0.25}
       zoomControl={false}
-      maxBounds={GHANA_BOUNDS}
-      maxBoundsViscosity={0.85}
+      maxBounds={PAN_BOUNDS}
+      maxBoundsViscosity={0.5}
       className="district-map"
     >
       <FitBoundsOnce fitKey={fitKey} />

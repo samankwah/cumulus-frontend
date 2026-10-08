@@ -167,12 +167,12 @@ test("clicking a region opens the 46-day drawer with chart, spells, weeks and ex
 
   const drawer = page.getByTestId("dashboard-drawer");
   await expect(drawer).toHaveClass(/open/);
-  await expect(page.getByTestId("drawer-summary-strip")).toContainText("46-day rain");
-  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Dry-spell days");
+  // The drawer only shows the selected layer: rainfall by default.
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Rainfall ·");
   await expect(page.getByTestId("subseasonal-chart")).toBeVisible();
-  await expect(page.getByTestId("subseasonal-calendar").locator("button")).toHaveCount(46);
-  await expect(page.getByTestId("subseasonal-spells")).toContainText(/Dry spell|Wet spell/);
   await expect(page.getByTestId("subseasonal-weeks")).toContainText("Week 1");
+  await expect(page.getByTestId("subseasonal-calendar")).toHaveCount(0);
+  await expect(page.getByTestId("subseasonal-advisory")).toContainText("What to do");
   await expect(page.getByTestId("subseasonal-guidance")).toContainText("deterministic");
   expect(requests.some((url) => url.pathname === "/subseasonal/area" && url.searchParams.get("level") === "region")).toBe(true);
   await expect(page).toHaveURL(/area=region/);
@@ -181,9 +181,19 @@ test("clicking a region opens the 46-day drawer with chart, spells, weeks and ex
   await page.getByTestId("subseasonal-download").click();
   expect((await download).suggestedFilename()).toMatch(/\.csv$/);
 
-  // A calendar day jumps the map to that day's rainfall.
+  // Switching layer swaps the drawer to that layer's content and advice.
+  const rainHeadline = await page.getByTestId("subseasonal-advisory-headline").textContent();
+  await page.getByTestId("ss-layer-dry_spell_days").click();
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Dry-spell days");
+  await expect(page.getByTestId("subseasonal-chart")).toHaveCount(0);
+  await expect(page.getByTestId("subseasonal-weeks")).toHaveCount(0);
+  await expect(page.getByTestId("subseasonal-calendar").locator("button")).toHaveCount(46);
+  await expect(page.getByTestId("subseasonal-advisory-headline")).not.toHaveText(rainHeadline ?? "");
+
+  // A calendar day jumps the map (and the drawer) back to that day's rainfall.
   await page.getByTestId("subseasonal-calendar").locator("button").nth(4).click();
   await expect(page.getByTestId("timeline-current")).toHaveText("Tue 29 Sep");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Rainfall ·");
 
   await page.getByTestId("drawer-close").click();
   await expect(drawer).not.toHaveClass(/open/);
@@ -209,6 +219,25 @@ test("deep links restore the layer and the selected area", async ({ page }) => {
   await expect(page.getByTestId("drawer-selected-geography")).toHaveText("Northern");
 });
 
+test("a shared district link switches the map to districts so the area is outlined", async ({ page }) => {
+  await mockSubseasonal(page);
+  await page.goto("/?area=district&name=Tamale", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/);
+  await expect(page.getByTestId("dashboard-mode-district")).toHaveAttribute("aria-selected", "true");
+});
+
+test("on phones the drawer switches layers in place", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockSubseasonal(page);
+  await page.goto("/?area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("subseasonal-advisory")).toBeVisible();
+  await page.getByTestId("drawer-layer-dry_spell_days").click();
+  await expect(page.getByTestId("drawer-layer-dry_spell_days")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Dry-spell days");
+  await expect(page).toHaveURL(/layer=dry_spell_days/);
+  await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/);
+});
+
 test("run failures show a retry that recovers", async ({ page }) => {
   const { state } = await mockSubseasonal(page, { failRuns: true });
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -221,20 +250,38 @@ test("run failures show a retry that recovers", async ({ page }) => {
 test("switching to the seasonal outlook keeps the seasonal controls working", async ({ page }) => {
   const { seasonalRequests } = await mockSubseasonal(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  // The view tabs are server-rendered; a click before hydration is dropped, so wait for the live app.
+  await expect(page.getByTestId("subseasonal-timeline")).toBeVisible();
   await page.getByTestId("dashboard-view-seasonal").click();
   await expect(page.getByTestId("theme-select-button")).toBeVisible();
   await expect(page).toHaveURL(/view=seasonal/);
   await expect.poll(() => seasonalRequests.some((url) => url.includes("/forecast/products/options"))).toBe(true);
 });
 
-test("46-day view fits phones without horizontal overflow and summarises collapsed controls", async ({ page }) => {
+test("on phones the 46-day map keeps one bottom card with layer chips and folded options", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 760 });
   await mockSubseasonal(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("subseasonal-timeline")).toBeVisible();
-  await expect(page.getByTestId("mobile-controls-summary")).toContainText("Rainfall · Daily");
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(0);
-  await page.getByTestId("mobile-controls-summary").click();
-  await expect(page.getByTestId("ss-layer-rainfall")).toBeVisible();
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(await overflow()).toBeLessThanOrEqual(0);
+
+  // The desktop side panel is replaced by a top bar and chips.
+  await expect(page.getByTestId("ss-layer-rainfall")).toBeHidden();
+  await expect(page.getByTestId("ss-topbar-run")).toContainText("days old");
+  await expect(page.getByTestId("ss-mlayer-rainfall")).toHaveAttribute("aria-checked", "true");
+
+  await page.getByTestId("ss-mlayer-dry_spell_days").click();
+  await expect(page).toHaveURL(/layer=dry_spell_days/);
+  await expect(page.getByTestId("subseasonal-legend")).toContainText("days");
+
+  // Period and areas sit behind the options button.
+  await expect(page.getByTestId("ss-mgeo-district")).toHaveCount(0);
+  await page.getByTestId("ss-mobile-options").click();
+  await page.getByTestId("ss-mgeo-district").click();
+  await expect(page.getByTestId("ss-mgeo-district")).toHaveAttribute("aria-checked", "true");
+  expect(await overflow()).toBeLessThanOrEqual(0);
+
+  await page.getByTestId("ss-topbar-seasonal").click();
+  await expect(page).toHaveURL(/view=seasonal/);
 });

@@ -1,11 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AdvisoryPanel } from "@/components/subseasonal/advisory-panel";
 import { RainChart } from "@/components/subseasonal/rain-chart";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
-import { downloadText, formatAmount, formatDay, formatRange, seriesToCsv } from "@/lib/subseasonal";
-import type { SubseasonalSeries } from "@/lib/subseasonal";
+import { downloadText, formatAmount, formatDay, formatRange, LAYER_FALLBACK_LABELS, LAYER_SHORT_LABELS, layerLabel, seriesToCsv, todayIso } from "@/lib/subseasonal";
+import type { SpellKind, SubseasonalLayerKey, SubseasonalSeries } from "@/lib/subseasonal";
+import { buildSubseasonalAdvisory, isCropKey } from "@/lib/subseasonal-advisory";
+import type { CropKey } from "@/lib/subseasonal-advisory";
+
+const CROP_STORAGE_KEY = "ss-advisory-crop";
+
+const LAYER_KEYS = Object.keys(LAYER_FALLBACK_LABELS) as SubseasonalLayerKey[];
+
+/** The viewer's crop, remembered on this device only. */
+function useCropPreference() {
+  const [crop, setCrop] = useState<CropKey>("maize");
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(CROP_STORAGE_KEY);
+      if (isCropKey(stored)) {
+        setCrop(stored);
+      }
+    } catch {
+      // Storage unavailable (private mode): keep the default.
+    }
+  }, []);
+  const update = useCallback((next: CropKey) => {
+    setCrop(next);
+    try {
+      window.localStorage.setItem(CROP_STORAGE_KEY, next);
+    } catch {
+      // Not persisted; the choice still applies for this visit.
+    }
+  }, []);
+  return [crop, update] as const;
+}
 
 function formatCoordinate(value: number | null, positive: string, negative: string) {
   if (value === null) {
@@ -14,28 +45,92 @@ function formatCoordinate(value: number | null, positive: string, negative: stri
   return `${Math.abs(value).toFixed(2)}°${value >= 0 ? positive : negative}`;
 }
 
-function headerFor(state: SubseasonalState) {
+function headerFor(state: SubseasonalState): { heading: string; chips: string[]; detail?: string } {
   const { selection, series } = state;
   if (!selection) {
-    return { heading: "Pick a location", detail: "Click the map, a region or a district to see its 46-day outlook." };
+    return { heading: "Pick a location", chips: [], detail: "Click the map, a region or a district to see its 46-day outlook." };
   }
   if (selection.kind === "point") {
     const place = series?.district ? `${series.district}, ${series.region}` : "Selected point";
-    return {
-      heading: place,
-      detail: `${formatCoordinate(selection.latitude, "N", "S")} ${formatCoordinate(selection.longitude, "E", "W")} · ${series?.support ?? "grid cell"}`,
-    };
+    const coordinates = `${formatCoordinate(selection.latitude, "N", "S")} ${formatCoordinate(selection.longitude, "E", "W")}`;
+    return { heading: place, chips: [coordinates] };
   }
   const levelLabel = selection.level === "district" ? "District" : "Region";
-  const where = selection.level === "district" && series?.region ? ` in ${series.region} Region` : "";
+  const chips = [levelLabel];
+  if (selection.level === "district" && series?.region) {
+    chips.push(`${series.region} Region`);
+  }
+  return { heading: series?.name ?? selection.name, chips };
+}
+
+type Hero = { label: string; value: string; unit: string; context: string; whole: string | null };
+
+/**
+ * The one number the selected layer is about. A run that started before today counts from
+ * today, so the number agrees with the forward-looking advice; the whole-run figure (what the
+ * map shows) stays alongside it.
+ */
+function heroFor(layer: SubseasonalLayerKey, series: SubseasonalSeries, today: string): Hero {
+  const all = series.days;
+  const upcoming = all.filter((day) => day.date >= today);
+  const partial = upcoming.length > 0 && upcoming.length < all.length;
+  const days = partial ? upcoming : all;
+  const span = partial ? `Next ${days.length} days` : `${all.length} days`;
+  const { metrics, thresholds } = series;
+
+  if (layer === "rainy_days") {
+    const rainy = days.filter((day) => day.wet).length;
+    return {
+      label: `Rainy days · ${span}`,
+      value: String(rainy),
+      unit: `/ ${days.length} days`,
+      context: `${Math.round((rainy / Math.max(1, days.length)) * 100)}% of days reach ${thresholds.wet_day_mm} mm or more`,
+      whole: partial ? `Whole run ${metrics.rainy_days} / ${all.length} days` : null,
+    };
+  }
+  if (layer === "dry_spell_days" || layer === "wet_spell_days") {
+    const kind: SpellKind = layer === "dry_spell_days" ? "dry" : "wet";
+    const inSpell = days.filter((day) => day.spell === kind).length;
+    const firstDay = days[0]?.day ?? 1;
+    const count = series.spells.filter((spell) => spell.kind === kind && spell.end_day >= firstDay).length;
+    const minDays = kind === "dry" ? thresholds.dry_spell_min_days : thresholds.wet_spell_min_days;
+    const wholeDays = kind === "dry" ? metrics.dry_spell_days : metrics.wet_spell_days;
+    return {
+      label: `${kind === "dry" ? "Dry-spell" : "Wet-spell"} days · ${span}`,
+      value: String(inSpell),
+      unit: `/ ${days.length} days`,
+      context: count ? `${count} ${kind} spell${count === 1 ? "" : "s"} of ${minDays}+ days` : `No ${kind} spells of ${minDays}+ days`,
+      whole: partial ? `Whole run ${wholeDays} / ${all.length} days` : null,
+    };
+  }
+  const total = days.reduce((sum, day) => sum + (day.value ?? 0), 0);
+  const wettest = days.reduce<SubseasonalSeries["days"][number] | null>(
+    (best, day) => ((day.value ?? 0) > (best?.value ?? 0) ? day : best),
+    null,
+  );
   return {
-    heading: series?.name ?? selection.name,
-    detail: `${levelLabel}${where}${series ? ` · ${series.support}` : ""}`,
+    label: `Rainfall · ${span}`,
+    value: formatAmount(total, "mm").replace(/ mm$/, ""),
+    unit: "mm",
+    context: wettest ? `Wettest day ${formatDay(wettest.date, "weekday")} · ${formatAmount(wettest.value, "mm")}` : "No rain day stands out",
+    whole: partial ? `Whole run ${formatAmount(metrics.total_mm, "mm")}` : null,
   };
 }
 
-function SpellCalendar({ series, currentDay, onSelectDay }: { series: SubseasonalSeries; currentDay: number | null; onSelectDay: (day: number) => void }) {
+function SpellCalendar({
+  series,
+  currentDay,
+  onSelectDay,
+  focus,
+}: {
+  series: SubseasonalSeries;
+  currentDay: number | null;
+  onSelectDay: (day: number) => void;
+  /** Only highlight spells of this kind; omit to show plain rain/dry days. */
+  focus?: SpellKind;
+}) {
   const firstWeekday = (new Date(`${series.days[0]?.date}T00:00:00Z`).getUTCDay() + 6) % 7; // Monday = 0
+  const today = todayIso();
   return (
     <div className="ss-calendar" data-testid="subseasonal-calendar">
       <div className="ss-calendar-weekdays" aria-hidden="true">
@@ -48,13 +143,16 @@ function SpellCalendar({ series, currentDay, onSelectDay }: { series: Subseasona
           <span key={`pad-${position}`} className="ss-calendar-pad" aria-hidden="true" />
         ))}
         {series.days.map((day) => {
-          const state = day.spell === "dry" ? "dry-spell" : day.spell === "wet" ? "wet-spell" : day.wet ? "wet" : "dry";
-          const label = `${formatDay(day.date, "weekday")}: ${formatAmount(day.value, "mm")}${day.spell ? `, ${day.spell} spell` : ""}`;
+          const spell = focus && day.spell === focus ? day.spell : null;
+          const state = spell ? `${spell}-spell` : day.wet ? "wet" : "dry";
+          const when = day.date < today ? " past" : day.date === today ? " today" : "";
+          const label = `${formatDay(day.date, "weekday")}${day.date === today ? " (today)" : ""}: ${formatAmount(day.value, "mm")}${spell ? `, ${spell} spell` : ""}`;
           return (
             <button
               key={day.day}
               type="button"
-              className={`ss-calendar-day ${state}${day.day === currentDay ? " current" : ""}`}
+              className={`ss-calendar-day ${state}${when}${day.day === currentDay ? " current" : ""}`}
+              aria-current={day.date === today ? "date" : undefined}
               aria-label={label}
               title={label}
               onClick={() => onSelectDay(day.day)}
@@ -65,22 +163,25 @@ function SpellCalendar({ series, currentDay, onSelectDay }: { series: Subseasona
         })}
       </div>
       <div className="ss-calendar-key" aria-hidden="true">
+        <span className="key today">Today</span>
         <span className="key wet">Rain day</span>
         <span className="key dry">Dry day</span>
-        <span className="key wet-spell">Wet spell</span>
-        <span className="key dry-spell">Dry spell</span>
+        {focus === "wet" ? <span className="key wet-spell">Wet spell</span> : null}
+        {focus === "dry" ? <span className="key dry-spell">Dry spell</span> : null}
       </div>
     </div>
   );
 }
 
-function SpellList({ series }: { series: SubseasonalSeries }) {
-  if (!series.spells.length) {
-    return <p className="ss-muted">No spells meet the thresholds in this forecast window.</p>;
+function SpellList({ series, kind }: { series: SubseasonalSeries; kind: SpellKind }) {
+  const spells = series.spells.filter((spell) => spell.kind === kind);
+  if (!spells.length) {
+    const minDays = kind === "dry" ? series.thresholds.dry_spell_min_days : series.thresholds.wet_spell_min_days;
+    return <p className="ss-muted">No {kind} spells of {minDays}+ days in this forecast window.</p>;
   }
   return (
     <ul className="ss-spell-list" data-testid="subseasonal-spells">
-      {series.spells.map((spell) => (
+      {spells.map((spell) => (
         <li key={`${spell.kind}-${spell.start_day}`} className={`ss-spell ${spell.kind}`}>
           <span className="ss-spell-kind">{spell.kind === "dry" ? "Dry spell" : "Wet spell"}</span>
           <span className="ss-spell-dates">
@@ -127,11 +228,68 @@ function WeeklyTable({ series }: { series: SubseasonalSeries }) {
   );
 }
 
+function Section({ kicker, title, children }: { kicker: string; title: string; children: React.ReactNode }) {
+  return (
+    <section className="drawer-section ss-card">
+      <div className="section-heading">
+        <div>
+          <span className="section-kicker">{kicker}</span>
+          <h3>{title}</h3>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function LayerSections({
+  layer,
+  series,
+  currentDay,
+  onSeekDay,
+}: {
+  layer: SubseasonalLayerKey;
+  series: SubseasonalSeries;
+  currentDay: number | null;
+  onSeekDay: (day: number) => void;
+}) {
+  if (layer === "rainy_days") {
+    return (
+      <Section kicker="Rain days" title={`Days with ${series.thresholds.wet_day_mm} mm or more`}>
+        <SpellCalendar series={series} currentDay={currentDay} onSelectDay={onSeekDay} />
+      </Section>
+    );
+  }
+  if (layer === "dry_spell_days" || layer === "wet_spell_days") {
+    const kind: SpellKind = layer === "dry_spell_days" ? "dry" : "wet";
+    const minDays = kind === "dry" ? series.thresholds.dry_spell_min_days : series.thresholds.wet_spell_min_days;
+    return (
+      <Section kicker={kind === "dry" ? "Dry spells" : "Wet spells"} title={`Runs of ${minDays}+ ${kind} days`}>
+        <SpellCalendar series={series} currentDay={currentDay} onSelectDay={onSeekDay} focus={kind} />
+        <SpellList series={series} kind={kind} />
+      </Section>
+    );
+  }
+  return (
+    <>
+      <Section kicker="Daily rainfall" title="Rain by day">
+        <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} />
+      </Section>
+      <Section kicker="Weekly totals" title="Rainfall by week">
+        <WeeklyTable series={series} />
+      </Section>
+    </>
+  );
+}
+
 export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalState; onSeekDay: (day: number) => void }) {
-  const { series, run } = state;
+  const { series, run, layer } = state;
   const header = headerFor(state);
   const [copied, setCopied] = useState(false);
   const currentDay = state.aggregation === "daily" ? state.index : null;
+  const [crop, setCrop] = useCropPreference();
+  const advisory = useMemo(() => (series ? buildSubseasonalAdvisory(layer, series, crop) : null), [crop, layer, series]);
+  const hero = series ? heroFor(layer, series, todayIso()) : null;
 
   const copyLink = async () => {
     try {
@@ -144,12 +302,26 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
   };
 
   return (
-    <aside data-testid="dashboard-drawer" className={state.isDrawerOpen ? "drawer open" : "drawer"} aria-label="Location forecast">
+    <aside
+      data-testid="dashboard-drawer"
+      className={`drawer ss-drawer ss-layer-${layer}${state.isDrawerOpen ? " open" : ""}`}
+      aria-label="Location forecast"
+    >
       <div className="drawer-header">
         <div>
-          <span className="section-kicker">{run ? `${run.lead_days}-day outlook` : "46-day outlook"}</span>
+          <span className="ss-drawer-layer">
+            <span className="ss-drawer-layer-dot" aria-hidden="true" />
+            {layerLabel(run, layer)} · {run ? `${run.lead_days}-day outlook` : "46-day outlook"}
+          </span>
           <h2 data-testid="drawer-selected-geography">{header.heading}</h2>
-          <p>{header.detail}</p>
+          {header.chips.length ? (
+            <div className="ss-drawer-chips">
+              {header.chips.map((chip) => (
+                <span key={chip}>{chip}</span>
+              ))}
+            </div>
+          ) : null}
+          {header.detail ? <p>{header.detail}</p> : null}
         </div>
         <button
           type="button"
@@ -164,6 +336,21 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
         </button>
       </div>
 
+      <div className="ss-drawer-tabs" role="group" aria-label="Map layer">
+        {LAYER_KEYS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`ss-drawer-tab ss-tab-${key}`}
+            aria-pressed={layer === key}
+            data-testid={`drawer-layer-${key}`}
+            onClick={() => state.setLayer(key)}
+          >
+            {LAYER_SHORT_LABELS[key]}
+          </button>
+        ))}
+      </div>
+
       {state.seriesError ? (
         <div className="drawer-scroll">
           <article className="empty-card drawer-error" data-testid="selection-unavailable">
@@ -176,7 +363,7 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
             </button>
           </div>
         </div>
-      ) : !series ? (
+      ) : !series || !hero || !advisory ? (
         <div className="drawer-scroll" aria-busy={state.isSeriesLoading}>
           {state.isSeriesLoading ? (
             <div className="ss-drawer-skeleton" data-testid="subseasonal-drawer-loading">
@@ -193,96 +380,49 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
           )}
         </div>
       ) : (
-        <div className="drawer-scroll" aria-busy={state.isSeriesLoading}>
-          <section className="drawer-section drawer-summary-section">
-            <dl className="drawer-summary-strip ss-kpis" data-testid="drawer-summary-strip">
-              <div className="drawer-summary-metric">
-                <dt>{series.days.length}-day rain</dt>
-                <dd>{formatAmount(series.metrics.total_mm, "mm")}</dd>
-              </div>
-              <div className="drawer-summary-metric">
-                <dt>Rainy days</dt>
-                <dd>
-                  {series.metrics.rainy_days}
-                  <small> / {series.days.length}</small>
-                </dd>
-              </div>
-              <div className="drawer-summary-metric ss-kpi-dry">
-                <dt>Dry-spell days</dt>
-                <dd>{series.metrics.dry_spell_days}</dd>
-              </div>
-              <div className="drawer-summary-metric ss-kpi-wet">
-                <dt>Wet-spell days</dt>
-                <dd>{series.metrics.wet_spell_days}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="drawer-section">
-            <div className="section-heading">
-              <div>
-                <span className="section-kicker">Daily rainfall</span>
-                <h3>
-                  Wettest day {series.metrics.max_day ? formatDay(series.days[series.metrics.max_day - 1].date, "weekday") : "–"}
-                  {series.metrics.max_day_mm !== null ? ` · ${formatAmount(series.metrics.max_day_mm, "mm")}` : ""}
-                </h3>
-              </div>
-            </div>
-            <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} />
-          </section>
-
-          <section className="drawer-section">
-            <div className="section-heading">
-              <div>
-                <span className="section-kicker">Wet &amp; dry spells</span>
-                <h3>
-                  Dry spell ≥{series.thresholds.dry_spell_min_days} days · wet spell ≥{series.thresholds.wet_spell_min_days} days
-                </h3>
-              </div>
-            </div>
-            <SpellCalendar series={series} currentDay={currentDay} onSelectDay={onSeekDay} />
-            <SpellList series={series} />
-          </section>
-
-          <section className="drawer-section">
-            <div className="section-heading">
-              <div>
-                <span className="section-kicker">Weekly totals</span>
-                <h3>Rainfall by week</h3>
-              </div>
-            </div>
-            <WeeklyTable series={series} />
-          </section>
-
-          <section className="drawer-section">
-            <p className="ss-guidance" data-testid="subseasonal-guidance">
-              {series.guidance}
-            </p>
-            <div className="drawer-actions ss-drawer-actions">
-              <button
-                type="button"
-                className="ghost-button"
-                data-testid="subseasonal-download"
-                onClick={() =>
-                  downloadText(
-                    `${series.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${series.run_id}.csv`,
-                    seriesToCsv(series, run),
-                  )
-                }
-              >
-                Download CSV
-              </button>
-              <button type="button" className="ghost-button" onClick={copyLink}>
-                {copied ? "Link copied" : "Copy link"}
-              </button>
-            </div>
-            {run ? (
-              <p className="ss-source">
-                {run.source_label} · run {run.run_id} · {run.grid_resolution_degrees ?? 0.1}° grid
+        <>
+          <div key={layer} className="drawer-scroll ss-drawer-body" aria-busy={state.isSeriesLoading}>
+            <section className="ss-hero" data-testid="drawer-summary-strip">
+              <span className="ss-hero-label">{hero.label}</span>
+              <p className="ss-hero-value">
+                {hero.value}
+                <small> {hero.unit}</small>
               </p>
-            ) : null}
-          </section>
-        </div>
+              <span className="ss-hero-context">{hero.context}</span>
+              {hero.whole ? <span className="ss-hero-whole">{hero.whole}</span> : null}
+            </section>
+
+            <AdvisoryPanel advisory={advisory} crop={crop} onCropChange={setCrop} />
+
+            <LayerSections layer={layer} series={series} currentDay={currentDay} onSeekDay={onSeekDay} />
+
+            <section className="ss-drawer-notes">
+              <p className="ss-guidance" data-testid="subseasonal-guidance">
+                {series.guidance}
+              </p>
+              {run ? (
+                <p className="ss-source">
+                  {series.support} · {run.source_label} · run {run.run_id} · {run.grid_resolution_degrees ?? 0.1}° grid
+                </p>
+              ) : null}
+            </section>
+          </div>
+          <div className="drawer-actions ss-drawer-actions ss-drawer-footer">
+            <button
+              type="button"
+              className="ghost-button"
+              data-testid="subseasonal-download"
+              onClick={() =>
+                downloadText(`${series.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${series.run_id}.csv`, seriesToCsv(series, run))
+              }
+            >
+              Download CSV
+            </button>
+            <button type="button" className="ghost-button" onClick={copyLink}>
+              {copied ? "Link copied" : "Copy link"}
+            </button>
+          </div>
+        </>
       )}
     </aside>
   );

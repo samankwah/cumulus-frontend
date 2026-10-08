@@ -153,9 +153,12 @@ test("46-day IFS-UNet view renders real tiles, area values and series from the b
 
   await clickRasterMap(page);
   await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/, { timeout: 30_000 });
-  await expect(page.getByTestId("drawer-summary-strip")).toContainText("46-day rain", { timeout: 30_000 });
-  await expect(page.getByTestId("subseasonal-calendar").locator("button")).toHaveCount(runs.runs[0].lead_days);
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Rainfall ·", { timeout: 30_000 });
+  await expect(page.getByTestId("subseasonal-weeks")).toBeVisible();
+  await expect(page.getByTestId("subseasonal-advisory")).toBeVisible();
 
   await page.getByTestId("ss-layer-dry_spell_days").click();
   await expect(page.getByTestId("subseasonal-legend")).toContainText("days");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Dry-spell days");
+  await expect(page.getByTestId("subseasonal-calendar").locator("button")).toHaveCount(runs.runs[0].lead_days);
 });

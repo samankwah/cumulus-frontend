@@ -429,45 +429,38 @@
 
 .ss-legend-bar {
   display: flex;
-  width: calc(100% - 34px);
-  height: 14px;
+  width: 100%;
+  height: 22px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 999px;
-  box-shadow: var(--map-inset-shadow);
-}
-
-.ss-legend-step {
-  flex: 1;
-}
-
-.ss-legend-axis {
-  position: relative;
-  width: calc(100% - 34px);
-  height: 14px;
-  color: var(--muted);
+  border-radius: 8px;
+  box-shadow: var(--map-card-shadow);
   font-size: 0.7rem;
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 20px;
   font-variant-numeric: tabular-nums;
 }
 
-.ss-legend-axis span {
-  position: absolute;
-  top: 0;
-  transform: translateX(-50%);
+/* The unit opens the bar, on a neutral cell, as on windy.com. */
+.ss-legend-unit {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  background: rgba(30, 42, 51, 0.82);
+  color: #fff;
+  letter-spacing: 0.02em;
 }
 
-.ss-legend-axis span:first-child {
-  transform: none;
+.ss-legend-step {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-left: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: default;
 }
 
-.ss-legend-axis .ss-legend-unit {
-  top: -16px;
-  right: -34px;
-  left: auto;
-  color: var(--ink);
-  font-weight: 700;
-  transform: none;
+.ss-legend-step + .ss-legend-step {
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.35);
 }
 
 .ss-legend-caption {
@@ -729,6 +722,21 @@
 .ss-calendar-day.current {
   outline: 2px solid var(--ink);
   outline-offset: 1px;
+}
+
+/* Days already gone in a stale run recede; today is ringed. */
+.ss-calendar-day.past {
+  opacity: 0.42;
+}
+
+.ss-calendar-day.today {
+  box-shadow: inset 0 0 0 2px var(--accent-teal);
+  font-weight: 800;
+}
+
+.ss-calendar-key .today::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--accent-teal);
 }
 
 .ss-calendar-key .wet::before {
@@ -1055,4 +1063,875 @@
   .map-mobile-chrome.controls-collapsed .control-card {
     padding-block: 16px 12px;
   }
+}
+
+/* Location drawer (elevated) ------------------------------------------------ */
+
+.ss-drawer {
+  --ss-layer-color: var(--ss-rain);
+  --ss-layer-soft: var(--ss-rain-soft);
+  transition:
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 200ms ease;
+  opacity: 0;
+}
+
+.ss-drawer.open {
+  opacity: 1;
+}
+
+.ss-drawer.ss-layer-rainy_days {
+  --ss-layer-color: var(--accent-teal);
+  --ss-layer-soft: rgba(35, 209, 173, 0.18);
+}
+
+.ss-drawer.ss-layer-dry_spell_days {
+  --ss-layer-color: var(--ss-dry);
+  --ss-layer-soft: var(--ss-dry-soft);
+}
+
+.ss-drawer.ss-layer-wet_spell_days {
+  --ss-layer-color: var(--ss-wet);
+  --ss-layer-soft: var(--ss-wet-soft);
+}
+
+.ss-drawer .drawer-header {
+  padding: 24px 24px 18px;
+}
+
+.ss-drawer-layer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  background: var(--map-panel-surface-strong);
+  box-shadow: var(--map-card-shadow);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ss-drawer-layer-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ss-layer-color);
+  box-shadow: 0 0 0 3px var(--ss-layer-soft);
+}
+
+.ss-drawer .drawer-header h2 {
+  margin-top: 14px;
+}
+
+.ss-drawer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.ss-drawer-chips span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  box-shadow: var(--map-inset-shadow);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* A flex column, not a grid: grid rows let overflow-hidden cards collapse in the fixed-height scroller. */
+.ss-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 20px;
+}
+
+.ss-drawer-body > * {
+  flex-shrink: 0;
+}
+
+.ss-drawer-body > .drawer-section {
+  margin-top: 0;
+}
+
+/* Hero metric: the one number the layer is about. */
+.ss-hero {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 20px 22px 18px 26px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  border-radius: 26px;
+  background: var(--map-panel-surface-soft);
+  box-shadow: var(--map-inset-shadow);
+}
+
+.ss-hero::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  left: 0;
+  width: 5px;
+  border-radius: 0 6px 6px 0;
+  background: var(--ss-layer-color);
+}
+
+.ss-hero-label {
+  color: var(--drawer-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ss-hero-value {
+  margin: 0;
+  color: var(--drawer-ink);
+  font-size: clamp(2.4rem, 3vw, 3.1rem);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ss-hero-value small {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.ss-hero-context {
+  color: var(--drawer-muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+/* "What to do" advisory. */
+.ss-advisory {
+  --ss-tone: var(--accent-teal);
+  --ss-tone-soft: rgba(35, 209, 173, 0.14);
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  border-radius: 24px;
+  background: linear-gradient(135deg, var(--ss-tone-soft), transparent 70%), var(--map-panel-surface-strong);
+  box-shadow:
+    inset 4px 0 0 var(--ss-tone),
+    var(--map-card-shadow);
+}
+
+.ss-advisory.tone-mid {
+  --ss-tone: var(--accent-amber);
+  --ss-tone-soft: rgba(239, 188, 38, 0.16);
+}
+
+.ss-advisory.tone-high {
+  --ss-tone: var(--danger);
+  --ss-tone-soft: rgba(189, 85, 74, 0.13);
+}
+
+.ss-advisory-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Crop picker: a native select dressed as a chip (keyboard and screen-reader friendly). */
+.ss-crop-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding-left: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  background: var(--map-panel-surface);
+  box-shadow: var(--map-card-shadow);
+}
+
+.ss-crop-select:focus-within {
+  box-shadow: var(--neo-focus);
+}
+
+.ss-crop-label {
+  color: var(--drawer-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.ss-crop-select select {
+  min-height: 30px;
+  padding: 0 30px 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.ss-crop-select select:focus-visible {
+  outline: none;
+}
+
+.ss-crop-select svg {
+  position: absolute;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.ss-advisory-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.ss-advisory-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  background: var(--ss-tone-soft);
+  color: var(--ss-tone);
+}
+
+.ss-advisory-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.ss-advisory h3 {
+  margin: 0;
+  color: var(--drawer-ink);
+  font-size: 1.12rem;
+  line-height: 1.25;
+}
+
+.ss-advisory-context {
+  margin: 4px 0 0;
+  color: var(--drawer-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.ss-advisory-context strong {
+  color: var(--drawer-ink);
+  font-weight: 700;
+}
+
+/* Dated action list: when | what, with a confidence tag. */
+.ss-advisory-actions {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ss-advisory-actions li {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 2px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--drawer-line);
+}
+
+.ss-advisory-actions li:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.ss-action-when {
+  grid-row: span 2;
+  color: var(--ss-tone);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.ss-action-text {
+  color: var(--drawer-ink);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.ss-action-confidence {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--drawer-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: help;
+}
+
+.ss-action-confidence::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ss-action-confidence.likely {
+  color: #1f8a6f;
+}
+
+.ss-action-confidence.possible {
+  color: #9a6a10;
+}
+
+.ss-action-confidence.outlook {
+  color: var(--drawer-muted);
+}
+
+.ss-advisory-why {
+  border-top: 1px solid var(--drawer-line);
+  padding-top: 10px;
+  color: var(--drawer-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.ss-advisory-why summary {
+  width: fit-content;
+  color: var(--drawer-ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ss-advisory-why summary:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.ss-advisory-why ul {
+  margin: 8px 0 6px;
+  padding-left: 18px;
+}
+
+.ss-advisory-why p {
+  margin: 0;
+}
+
+/* Layer sections as raised sub-cards. */
+.ss-card {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 24px;
+  background: var(--map-panel-surface);
+  box-shadow: var(--map-card-shadow);
+}
+
+.ss-card .ss-chart {
+  box-shadow: var(--map-inset-shadow);
+}
+
+.ss-drawer-notes {
+  display: grid;
+  gap: 8px;
+}
+
+/* Actions pinned to the bottom of the drawer. */
+.ss-drawer-footer {
+  justify-content: flex-start;
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--drawer-line);
+}
+
+/* Sections rise in when the drawer opens or the layer changes. */
+@keyframes ss-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ss-drawer.open .ss-drawer-body > * {
+  animation: ss-rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.ss-drawer.open .ss-drawer-body > :nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.ss-drawer.open .ss-drawer-body > :nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.ss-drawer.open .ss-drawer-body > :nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.ss-drawer.open .ss-drawer-body > :nth-child(n + 5) {
+  animation-delay: 160ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-drawer {
+    transition: none;
+  }
+
+  .ss-drawer.open .ss-drawer-body > * {
+    animation: none;
+  }
+}
+
+/* Desktop: a floating card that mirrors the control panel on the left. */
+@media (min-width: 861px) {
+  .ss-drawer {
+    --ss-gutter: clamp(16px, 1.8vw, 24px);
+    --ss-drawer-width: clamp(380px, 31vw, 520px);
+    top: var(--ss-gutter);
+    right: var(--ss-gutter);
+    bottom: var(--ss-gutter);
+    width: var(--ss-drawer-width);
+    overflow: hidden;
+    border-radius: 34px;
+    transform: translateX(calc(100% + var(--ss-gutter) + 24px));
+  }
+
+  .ss-drawer.open {
+    transform: translateX(0);
+  }
+
+  .view-subseasonal.ss-drawer-open .floating-legend.floating-legend-subseasonal {
+    right: calc(clamp(380px, 31vw, 520px) + var(--ss-gutter) * 2);
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1180px) {
+  .ss-drawer {
+    --ss-drawer-width: min(440px, 46vw);
+  }
+
+  .view-subseasonal.ss-drawer-open .floating-legend.floating-legend-subseasonal {
+    right: calc(min(440px, 46vw) + var(--ss-gutter) * 2);
+  }
+}
+
+@media (max-width: 520px) {
+  .ss-drawer .drawer-header {
+    padding: 18px 16px 14px;
+  }
+
+  .ss-hero {
+    padding: 16px 16px 14px 20px;
+  }
+
+  .ss-advisory,
+  .ss-card {
+    padding: 16px;
+  }
+
+  .ss-drawer-footer {
+    padding: 12px 16px 16px;
+  }
+}
+
+/* Hero: whole-run figure (matches the map) under the from-today number. */
+.ss-hero-whole {
+  margin-top: 4px;
+  color: var(--drawer-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+/* Layer switcher inside the drawer: wherever the open drawer hides the layer panel (phones, and
+   mid-size screens where the panel slides away to make room). */
+.ss-drawer-tabs {
+  display: none;
+}
+
+@media (max-width: 1279px) {
+  .ss-drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin: 12px 16px 0;
+    padding: 4px;
+    border-radius: 16px;
+    box-shadow: var(--map-inset-shadow);
+  }
+
+  .ss-drawer-tab {
+    min-height: 36px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .ss-drawer-tab[aria-pressed="true"] {
+    background: var(--map-panel-surface-strong);
+    box-shadow: var(--map-card-shadow);
+    color: var(--ink);
+  }
+
+  .ss-drawer-tab:focus-visible {
+    outline: 2px solid var(--accent-teal);
+    outline-offset: 1px;
+  }
+
+  /* The tabs name the layer, so the header chip only needs the outlook. */
+  .ss-drawer-layer {
+    display: none;
+  }
+
+  .ss-drawer .drawer-header h2 {
+    margin-top: 0;
+  }
+}
+
+/* Phone layout for the 46-day view ----------------------------------------- */
+/* The map leads: a slim top bar, and one bottom card with layer chips, timeline and legend.
+   Period and areas live behind the options button; the desktop side panel is not shown. */
+
+.ss-topbar,
+.ss-mobile-controls {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .view-subseasonal .floating-controls {
+    display: none;
+  }
+
+  .ss-topbar {
+    position: absolute;
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    z-index: 760;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 12px 6px 6px;
+    border: 1px solid var(--map-panel-border);
+    border-radius: 18px;
+    background: var(--map-panel-surface);
+    box-shadow: var(--map-panel-shadow);
+    pointer-events: auto;
+  }
+
+  .ss-topbar-outlook {
+    flex: 0 0 auto;
+  }
+
+  .ss-topbar-outlook button {
+    padding: 0 12px;
+  }
+
+  .ss-topbar-run {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ss-topbar-run.stale {
+    color: #7a5605;
+  }
+
+  .ss-topbar-run.stale::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 5px;
+    border-radius: 50%;
+    background: var(--accent-amber);
+    vertical-align: 1px;
+  }
+
+  /* Grid and flex children default to their content width; let them shrink to the phone. */
+  .floating-legend-subseasonal > *,
+  .ss-mobile-controls,
+  .ss-mobile-bar,
+  .ss-mobile-options {
+    min-width: 0;
+  }
+
+  .ss-mobile-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin: -2px -2px 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .ss-mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Layer chips: one row, scrolls sideways if the phone is very narrow. */
+  .ss-chips {
+    display: flex;
+    flex: 1;
+    gap: 4px;
+    min-width: 0;
+    padding-right: 18px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* Fade the trailing edge so a clipped chip reads as "scroll for more". */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+  }
+
+  .ss-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ss-chip {
+    --chip-color: var(--ss-rain);
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 11px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.78rem;
+    scroll-snap-align: start;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .ss-chip::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--chip-color);
+    opacity: 0.45;
+  }
+
+  .ss-chip-rainy_days {
+    --chip-color: var(--accent-teal);
+  }
+
+  .ss-chip-dry_spell_days {
+    --chip-color: var(--ss-dry);
+  }
+
+  .ss-chip-wet_spell_days {
+    --chip-color: var(--ss-wet);
+  }
+
+  .ss-chip[aria-checked="true"] {
+    border-color: rgba(255, 255, 255, 0.7);
+    background: var(--map-panel-surface-strong);
+    box-shadow: var(--map-card-shadow);
+    color: var(--ink);
+  }
+
+  .ss-chip[aria-checked="true"]::before {
+    opacity: 1;
+  }
+
+  .ss-chip:focus-visible,
+  .ss-options-button:focus-visible,
+  .ss-mini-segmented button:focus-visible {
+    outline: 2px solid var(--accent-teal);
+    outline-offset: 2px;
+  }
+
+  .ss-options-button {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--map-panel-surface-strong);
+    box-shadow: var(--map-card-shadow);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .ss-options-button[aria-expanded="true"] {
+    box-shadow: var(--map-inset-shadow);
+    color: var(--accent-strong);
+  }
+
+  .ss-options-button svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-width: 1.8;
+  }
+
+  .ss-mobile-options {
+    display: grid;
+    gap: 8px;
+    animation: ss-rise 200ms ease both;
+  }
+
+  .ss-option-row {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ss-option-label {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .ss-mini-segmented {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 12px;
+    box-shadow: var(--map-inset-shadow);
+  }
+
+  .ss-mini-segmented button {
+    flex: 1;
+    min-height: 32px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .ss-mini-segmented button[aria-checked="true"] {
+    background: var(--map-panel-surface-strong);
+    box-shadow: var(--map-card-shadow);
+    color: var(--ink);
+  }
+
+  .ss-option-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.4;
+  }
+}
+
+/* On the narrowest phones the run's age matters more than the model name. */
+@media (max-width: 374px) {
+  .ss-topbar-model {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) and (prefers-reduced-motion: reduce) {
+  .ss-mobile-options {
+    animation: none;
+  }
+}
+
+/* Mid-size screens (tablets, half-width windows): panel + drawer + a usable map need ~1280px
+   (from 1280 the drawer narrows to 31vw). Below that, one side panel at a time: the open drawer slides the control panel away, the
+   drawer's own layer tabs take over, and the dock spans the freed width. */
+@media (min-width: 861px) {
+  .view-subseasonal .floating-controls {
+    transition:
+      transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 200ms ease,
+      visibility 0s;
+  }
+
+  .view-subseasonal .floating-legend.floating-legend-subseasonal {
+    transition:
+      left 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      right 220ms ease;
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1279px) {
+  .view-subseasonal.ss-drawer-open .floating-controls {
+    transform: translateX(calc(-100% - 48px));
+    opacity: 0;
+    pointer-events: none;
+    /* Out of the tab order too, once the slide-out has played. */
+    visibility: hidden;
+    transition:
+      transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 200ms ease,
+      visibility 0s linear 260ms;
+  }
+
+  .view-subseasonal.ss-drawer-open .floating-legend.floating-legend-subseasonal {
+    left: var(--ss-gutter);
+  }
+}
+
+@media (min-width: 861px) and (prefers-reduced-motion: reduce) {
+  .view-subseasonal .floating-controls,
+  .view-subseasonal .floating-legend.floating-legend-subseasonal {
+    transition: none;
+  }
+}
+
+/* No floating map-credit badge in this view: it collided with the dock. */
+.view-subseasonal .leaflet-control-attribution {
+  display: none !important;
 }

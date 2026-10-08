@@ -395,6 +395,14 @@ export const LAYER_FALLBACK_LABELS: Record<SubseasonalLayerKey, string> = {
   wet_spell_days: "Wet-spell days",
 };
 
+/** Compact names for chips and tabs where space is tight (phones). */
+export const LAYER_SHORT_LABELS: Record<SubseasonalLayerKey, string> = {
+  rainfall: "Rain",
+  rainy_days: "Rain days",
+  dry_spell_days: "Dry spells",
+  wet_spell_days: "Wet spells",
+};
+
 export const AGGREGATION_LABELS: Record<SubseasonalAggregation, string> = {
   daily: "Daily",
   weekly: "Weekly",

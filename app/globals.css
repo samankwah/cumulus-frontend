@@ -290,6 +290,22 @@ button {
   overflow-wrap: anywhere;
 }
 
+/* The team name leads the panel eyebrow ("CUMULUS · SUB-SEASONAL RAINFALL OUTLOOK"). */
+.brand-block .eyebrow {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.brand-name {
+  color: var(--accent-strong);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.brand-separator {
+  color: var(--muted);
+}
+
 .eyebrow,
 .section-kicker,
 .card-eyebrow {
@@ -1908,6 +1924,8 @@ button {
     right: 0;
     bottom: 0;
     width: auto;
+    /* The desktop cap (560px) would leave a left-hand slab on portrait tablets. */
+    max-width: none;
     max-height: none;
     border-radius: 0;
     transform: translateY(calc(100% + 24px));

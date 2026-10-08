@@ -38,7 +38,16 @@ function isAbort(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-export function useSubseasonal({ active, areaLevel }: { active: boolean; areaLevel: SubseasonalAreaLevel }) {
+export function useSubseasonal({
+  active,
+  areaLevel,
+  onRestoreAreaLevel,
+}: {
+  active: boolean;
+  areaLevel: SubseasonalAreaLevel;
+  /** A shared link names a region or district; the map's geography mode must follow it to outline the area. */
+  onRestoreAreaLevel?: (level: SubseasonalAreaLevel) => void;
+}) {
   // The page is prerendered without a query string, so the URL is applied after mount;
   // reading it during render would make the first client render differ from the HTML.
   const initialUrlState = useRef<SubseasonalUrlState | null>(null);
@@ -214,6 +223,7 @@ export function useSubseasonal({ active, areaLevel }: { active: boolean; areaLev
     if (area) {
       setSelection({ kind: "area", level: area.level, name: area.name, regionName: area.name, geographyKey: area.name, latitude: 0, longitude: 0 });
       setIsDrawerOpen(true);
+      onRestoreAreaLevel?.(area.level);
       // Resolve the map's feature key so the restored area is highlighted and kept in view.
       void loadMapData().then((mapData) => {
         const wanted = area.name.toLowerCase();

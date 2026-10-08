@@ -84,6 +84,8 @@ export type SubseasonalLegend = {
   key: string;
   unit: string;
   note: string | null;
+  /** Bins are named classes ("In a dry spell"), not numeric ranges. */
+  categorical?: boolean;
   bins: LegendBin[];
 };
 
@@ -445,11 +447,26 @@ function parsePositiveInt(value: string | null) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+/**
+ * The period a layer opens with when none is chosen: rainfall by day, indicators over the whole
+ * window. Also what a link without `agg` means, so links shared before indicators had periods
+ * still open the 46-day view.
+ */
+export function defaultAggregation(layer: SubseasonalLayerKey): SubseasonalAggregation {
+  return layer === "rainfall" ? "daily" : "total";
+}
+
+/** Periods the run offers for a layer, in display order (older runs: indicators are 46-day only). */
+export function layerAggregations(run: SubseasonalRun | null, layer: SubseasonalLayerKey): SubseasonalAggregation[] {
+  const listed = run?.layers.find((item) => item.layer === layer)?.aggregations;
+  const offered = listed?.length ? listed : [defaultAggregation(layer)];
+  return AGGREGATION_KEYS.filter((key) => offered.includes(key));
+}
+
 export function readUrlState(search: string): SubseasonalUrlState {
   const params = new URLSearchParams(search);
   const layer = LAYER_KEYS.find((key) => key === params.get("layer")) ?? "rainfall";
-  const requestedAggregation = AGGREGATION_KEYS.find((key) => key === params.get("agg")) ?? "daily";
-  const aggregation = layer === "rainfall" ? requestedAggregation : "total";
+  const aggregation = AGGREGATION_KEYS.find((key) => key === params.get("agg")) ?? defaultAggregation(layer);
   const lat = Number.parseFloat(params.get("lat") ?? "");
   const lon = Number.parseFloat(params.get("lon") ?? "");
   const areaLevel = params.get("area");
@@ -478,8 +495,8 @@ export function writeUrlState(state: SubseasonalUrlState) {
     params.set("view", "seasonal");
   } else {
     if (state.layer !== "rainfall") params.set("layer", state.layer);
-    if (state.layer === "rainfall" && state.aggregation !== "daily") params.set("agg", state.aggregation);
-    if (state.aggregation === "daily" && state.layer === "rainfall" && state.day) params.set("day", String(state.day));
+    if (state.aggregation !== defaultAggregation(state.layer)) params.set("agg", state.aggregation);
+    if (state.aggregation === "daily" && state.day) params.set("day", String(state.day));
     if (state.aggregation === "weekly" && state.week) params.set("week", String(state.week));
     if (state.area) {
       params.set("area", state.area.level);

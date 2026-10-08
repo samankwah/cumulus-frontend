@@ -14,7 +14,16 @@ const PNG_1X1 = Buffer.from(
   "base64",
 );
 
-type MockOptions = { failRuns?: boolean };
+/** `indicatorPeriods`: serve a backend whose indicators offer daily/weekly maps (the fixture predates them). */
+type MockOptions = { failRuns?: boolean; indicatorPeriods?: boolean };
+
+const runsWithIndicatorPeriods = {
+  ...runs,
+  runs: runs.runs.map((run) => ({
+    ...run,
+    layers: run.layers.map((item) => ({ ...item, aggregations: ["daily", "weekly", "total"] })),
+  })),
+};
 
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -35,7 +44,7 @@ async function mockSubseasonal(page: Page, options: MockOptions = {}) {
       case "/subseasonal/runs":
         return state.failRuns
           ? json(route, { detail: "boom", error_code: "service_error" }, 500)
-          : json(route, runs);
+          : json(route, options.indicatorPeriods ? runsWithIndicatorPeriods : runs);
       case "/subseasonal/layer": {
         const layer = params.get("layer") ?? "rainfall";
         const aggregation = params.get("aggregation") ?? "daily";
@@ -197,6 +206,24 @@ test("clicking a region opens the 46-day drawer with chart, spells, weeks and ex
 
   await page.getByTestId("drawer-close").click();
   await expect(drawer).not.toHaveClass(/open/);
+});
+
+test("indicators follow the period picker when the backend offers their daily and weekly maps", async ({ page }) => {
+  const { requests } = await mockSubseasonal(page, { indicatorPeriods: true });
+  await page.goto("/?layer=dry_spell_days", { waitUntil: "domcontentloaded" });
+  // A link without a period still opens an indicator on the whole window.
+  await expect(page.getByTestId("ss-agg-total")).toHaveAttribute("aria-selected", "true");
+
+  await page.getByTestId("ss-agg-weekly").click();
+  await expect(page.getByTestId("subseasonal-timeline")).toBeVisible();
+  await expect(page).toHaveURL(/layer=dry_spell_days.*agg=weekly|agg=weekly.*layer=dry_spell_days/);
+  await expect
+    .poll(() => requests.some((url) => url.pathname === "/subseasonal/layer" && url.searchParams.get("layer") === "dry_spell_days" && url.searchParams.get("aggregation") === "weekly"))
+    .toBe(true);
+
+  // The period is shared: another indicator keeps it.
+  await page.getByTestId("ss-layer-wet_spell_days").click();
+  await expect(page.getByTestId("ss-agg-weekly")).toHaveAttribute("aria-selected", "true");
 });
 
 test("hovering a region shows its area value instantly", async ({ page }) => {

@@ -3,13 +3,12 @@
 import { useState } from "react";
 
 import { AGGREGATION_LABELS, formatInitTime, LAYER_FALLBACK_LABELS, LAYER_SHORT_LABELS } from "@/lib/subseasonal";
-import type { SubseasonalAggregation, SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
+import type { SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
 import { ForecastTimeline } from "@/components/subseasonal/forecast-timeline";
 import { SteppedLegend } from "@/components/subseasonal/stepped-legend";
 
 const LAYER_ORDER: SubseasonalLayerKey[] = ["rainfall", "rainy_days", "dry_spell_days", "wet_spell_days"];
-const AGGREGATIONS: SubseasonalAggregation[] = ["daily", "weekly", "total"];
 
 function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
   const thresholds = state.run?.thresholds;
@@ -96,12 +95,12 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
         </div>
       </div>
 
-      {state.layer === "rainfall" ? (
+      {state.aggregations.length > 1 ? (
         <div className="control-group">
           <div className="control-field">
             <span className="control-label">Period</span>
-            <div className="segmented ss-segmented-triple" role="tablist" aria-label="Rainfall period">
-              {AGGREGATIONS.map((aggregation) => (
+            <div className="segmented ss-segmented-triple" role="tablist" aria-label="Forecast period">
+              {state.aggregations.map((aggregation) => (
                 <button
                   key={aggregation}
                   type="button"
@@ -176,11 +175,11 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
       </div>
       {isOptionsOpen ? (
         <div className="ss-mobile-options" id="ss-mobile-options">
-          {state.layer === "rainfall" ? (
+          {state.aggregations.length > 1 ? (
             <div className="ss-option-row">
               <span className="ss-option-label">Period</span>
-              <div className="ss-mini-segmented" role="radiogroup" aria-label="Rainfall period">
-                {AGGREGATIONS.map((aggregation) => (
+              <div className="ss-mini-segmented" role="radiogroup" aria-label="Forecast period">
+                {state.aggregations.map((aggregation) => (
                   <button
                     key={aggregation}
                     type="button"

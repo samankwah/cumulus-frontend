@@ -27,7 +27,8 @@ const ForecastRasterMap = dynamic(
   { ssr: false },
 );
 
-const SUBSEASONAL_TILE_OPACITY = 0.66;
+/** Close to opaque so the map matches the legend; place labels are drawn above the raster. */
+const SUBSEASONAL_TILE_OPACITY = 0.85;
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
@@ -155,6 +156,12 @@ export function DashboardShell() {
           return `${heading}<br/><span class="tooltip-muted">Loading area value…</span>`;
         }
         const value = areaValues.values[name] ?? null;
+        if (legendMeta?.legend.categorical) {
+          // Day maps flag cells 100/0, so the area mean is the share of the area flagged.
+          const label = legendMeta.legend.bins[0]?.label ?? layerMeta?.layer_label ?? "";
+          const share = value === null ? "–" : `${Math.round(value)}%`;
+          return `${heading}<br/><span class="ss-tip-value">${escapeHtml(label)}</span><br/><span class="tooltip-muted">across ${share} of the area</span>`;
+        }
         const color = legendMeta ? legendColorFor(legendMeta.legend, value) : null;
         const swatch = color ? `<i class="ss-tip-swatch" style="background:${color}"></i>` : "";
         const period = layerMeta?.title.split(" · ").slice(1).join(" · ") ?? "";
@@ -169,7 +176,7 @@ export function DashboardShell() {
 
   const collapsedSummary = [
     layerLabel(run, subseasonal.layer),
-    subseasonal.layer === "rainfall" ? AGGREGATION_LABELS[subseasonal.aggregation] : null,
+    subseasonal.aggregation === "total" ? null : AGGREGATION_LABELS[subseasonal.aggregation],
     dashboardMode === "district" ? "Districts" : "Regions",
   ]
     .filter(Boolean)

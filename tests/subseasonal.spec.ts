@@ -463,3 +463,48 @@ test("on phones the 46-day map keeps one bottom card with layer chips and folded
   await page.getByTestId("ss-topbar-seasonal").click();
   await expect(page).toHaveURL(/view=seasonal/);
 });
+
+test("area search finds districts, regions and regional capitals and selects them", async ({ page }) => {
+  await mockSubseasonal(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await page.getByTestId("area-search-button").click();
+  const input = page.getByTestId("area-search-input");
+  await expect(input).toBeFocused();
+
+  // A district: switches the map to districts, opens the drawer and names the tab after it.
+  await input.fill("accra");
+  await expect(page.getByTestId("area-search-result").first()).toContainText("Accra");
+  await expect(page.getByTestId("area-search-result").first()).toContainText("District");
+  await page.getByTestId("area-search-result").first().click();
+  await expect(input).toHaveCount(0);
+  await expect(page.getByTestId("dashboard-mode-district")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("drawer-selected-geography")).toHaveText("Accra");
+  await expect(page).toHaveURL(/area=district/);
+  await expect(page).toHaveTitle("Accra Rainfall - Accra Metro District, Ghana");
+
+  // A region, picked with the keyboard.
+  await page.getByTestId("area-search-button").click();
+  await page.getByTestId("area-search-input").fill("ashanti");
+  await expect(page.getByTestId("area-search-result").first()).toContainText("Region");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("dashboard-mode-region")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("drawer-selected-geography")).toHaveText("Ashanti");
+  await expect(page).toHaveTitle("Ashanti Rainfall - Ashanti Region, Ghana");
+
+  // A regional capital named unlike its district selects the district it lies in.
+  await page.getByTestId("area-search-button").click();
+  await page.getByTestId("area-search-input").fill("koforidua");
+  await expect(page.getByTestId("area-search-result").first()).toContainText("Eastern regional capital");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("drawer-selected-geography")).toHaveText("New Juaben South");
+
+  // No match, then Escape closes the search.
+  await page.getByTestId("area-search-button").click();
+  await page.getByTestId("area-search-input").fill("zzz");
+  await expect(page.getByTestId("area-search-empty")).toContainText("No region or district matches");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("area-search-input")).toHaveCount(0);
+});

@@ -3,6 +3,7 @@ import type { Geometry, Position } from "geojson";
 import type {
   DistrictFeature,
   DistrictFeatureCollection,
+  DistrictFeatureProperties,
   DistrictMetadata,
   RawDistrictFeatureCollection,
   RegionFeature,
@@ -201,6 +202,27 @@ export function isPointInFeatureCollection(
   featureCollection: PointLikeFeatureCollection,
 ) {
   return featureCollection.features.some((feature) => isPointInGeometry(latitude, longitude, feature.geometry));
+}
+
+/** The two districts whose source name carries no type; both are metropolitan assemblies. */
+const UNTYPED_DISTRICT_NAMES: Record<string, string> = {
+  Kumasi: "Kumasi Metro District",
+  Tamale: "Tamale Metro District",
+};
+
+/**
+ * Official-style district name for labels, e.g. "Accra Metro District" or "Adenta Municipal District".
+ * Districts matched to their nearest neighbour carry that neighbour's API name, so they fall back
+ * to their own display name.
+ */
+export function districtFullName(properties: Pick<DistrictFeatureProperties, "display_name" | "api_district" | "match_resolution">) {
+  const base = properties.match_resolution === "nearest" ? properties.display_name : properties.api_district || properties.display_name;
+  const override = UNTYPED_DISTRICT_NAMES[base];
+  if (override) {
+    return override;
+  }
+  const name = base.replace(/ Metropolitan$/, " Metro");
+  return name.endsWith(" District") ? name : `${name} District`;
 }
 
 async function loadJson<T>(path: string): Promise<T> {

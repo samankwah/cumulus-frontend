@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
-import type { FeatureCollection } from "geojson";
+import type { FeatureCollection, Geometry } from "geojson";
 import type { LatLngBounds, LatLngBoundsExpression, LeafletMouseEvent } from "leaflet";
 import L from "leaflet";
 import { CircleMarker, GeoJSON, MapContainer, Pane, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -276,13 +276,16 @@ function getChromeAwarePadding(map: L.Map) {
 }
 
 /**
- * fitBounds that survives a running zoom animation. Leaflet discards a fit issued mid-animation (the
- * transition end restores its own target), so wait for the zoom to finish first.
+ * fitBounds that survives a running animation. Leaflet discards or garbles a fit issued mid-animation
+ * (a zoom's end restores its own target; a pan keeps running under the new zoom), so wait for it.
  */
 function fitWhenIdle(map: L.Map, bounds: LatLngBoundsExpression, options: L.FitBoundsOptions) {
   const run = () => map.fitBounds(bounds, options);
-  if ((map as unknown as { _animatingZoom?: boolean })._animatingZoom) {
+  const state = map as unknown as { _animatingZoom?: boolean; _panAnim?: { _inProgress?: boolean } };
+  if (state._animatingZoom) {
     map.once("zoomend", run);
+  } else if (state._panAnim?._inProgress) {
+    map.once("moveend", run);
   } else {
     run();
   }
@@ -297,12 +300,34 @@ export type MapControlsHandle = {
   map: L.Map;
   /** Back to the default view: all of Ghana, clear of the floating panels. */
   resetView: () => void;
+  /** Zoom to an area (e.g. a search result) so it fills the space the floating panels leave. */
+  focusArea: (geometry: Geometry) => void;
 };
+
+/** Close enough to read a small district, without zooming past the forecast's resolution. */
+const FOCUS_MAX_ZOOM = CUSTOM_BORDERS_MAX_ZOOM;
+/** Lets the drawer a selection opens lay out first, so the fit clears it. */
+const FOCUS_DELAY_MS = 300;
+/** Fired on the map when it is moved on the user's behalf, so the automatic Ghana refits stop. */
+const USER_FOCUS_EVENT = "cumulus:userfocus";
 
 function MapReady({ onMapReady }: { onMapReady: (handle: MapControlsHandle | null) => void }) {
   const map = useMap();
   useEffect(() => {
-    onMapReady({ map, resetView: () => fitGhana(map, getChromeAwarePadding(map), true) });
+    onMapReady({
+      map,
+      resetView: () => fitGhana(map, getChromeAwarePadding(map), true),
+      focusArea: (geometry) => {
+        const bounds = L.geoJSON(geometry).getBounds();
+        if (!bounds.isValid()) {
+          return;
+        }
+        map.fire(USER_FOCUS_EVENT);
+        window.setTimeout(() => {
+          fitWhenIdle(map, bounds, { ...getChromeAwarePadding(map), maxZoom: FOCUS_MAX_ZOOM, animate: true });
+        }, FOCUS_DELAY_MS);
+      },
+    });
     return () => onMapReady(null);
   }, [map, onMapReady]);
   return null;
@@ -348,6 +373,7 @@ function FitBoundsOnce({ fitKey }: { fitKey: string }) {
     };
     const container = map.getContainer();
     map.on("dragstart", markUserMoved);
+    map.on(USER_FOCUS_EVENT, markUserMoved);
     container.addEventListener("wheel", markUserMoved, { passive: true });
     container.addEventListener("touchstart", markUserMoved, { passive: true });
     container.addEventListener("dblclick", markUserMoved);
@@ -366,6 +392,7 @@ function FitBoundsOnce({ fitKey }: { fitKey: string }) {
       window.clearTimeout(handle);
       observer.disconnect();
       map.off("dragstart", markUserMoved);
+      map.off(USER_FOCUS_EVENT, markUserMoved);
       container.removeEventListener("wheel", markUserMoved);
       container.removeEventListener("touchstart", markUserMoved);
       container.removeEventListener("dblclick", markUserMoved);

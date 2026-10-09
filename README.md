@@ -3,13 +3,13 @@
 Standalone Next.js seasonal advisory map for Ghana.
 
 The FastAPI backend lives in a separate repository,
-[`seasonal-fcst-backend`](https://github.com/samankwah/seasonal-fcst-backend). The
+[`cumulus-backend`](https://github.com/samankwah/cumulus-backend). The
 instructions below assume the two repositories are checked out side by side:
 
 ```
-seasonalfcst/
-  seasonal-fcst-frontend/   <- this repo
-  seasonal-fcst-backend/
+cumulus-gh/
+  cumulus-frontend/   <- this repo
+  cumulus-backend/
 ```
 
 ## What it includes
@@ -57,7 +57,7 @@ The PowerShell helpers in this repo start a single server each and refuse to sta
 Start the backend (from the backend repo):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ..\seasonal-fcst-backend\scripts\start-backend-local.ps1
+powershell -ExecutionPolicy Bypass -File ..\cumulus-backend\scripts\start-backend-local.ps1
 ```
 
 In a second terminal, start the development frontend:
@@ -113,7 +113,7 @@ The smoke harness sets `NEXT_PUBLIC_DISABLE_THEMATIC_WARMUP=1` so the initial br
 
 The integration smoke test builds the Next.js app first, then starts the production server in the same workflow alongside the local FastAPI backend, points the frontend at `http://127.0.0.1:8000`, refreshes the published seasonal products through `/forecast/products/refresh`, and drives the map UI through the real `/forecast/*` endpoints. If no raw ERA5 or GFS manifest has been downloaded locally, the backend helper falls back to `data/sample_forecast_smoke.nc`.
 
-The backend repo is expected as a sibling directory (`../seasonal-fcst-backend`). Override its location with `CUMULUS_BACKEND_DIR` before running the harness.
+The backend repo is expected as a sibling directory (`../cumulus-backend`). Override its location with `CUMULUS_BACKEND_DIR` before running the harness.
 
 Run the real integration harness:
 
@@ -121,4 +121,4 @@ Run the real integration harness:
 cmd /c npm run smoke:integration
 ```
 
-If the backend environment on the machine cannot import `cumulus.main:app`, install the backend package (`python -m pip install -e ..\seasonal-fcst-backend[dev]`) or make sure Python can import its `src/`.
+If the backend environment on the machine cannot import `cumulus.main:app`, install the backend package (`python -m pip install -e ..\cumulus-backend[dev]`) or make sure Python can import its `src/`.

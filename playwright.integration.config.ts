@@ -3,10 +3,10 @@ import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // The backend is a separate repository. By default we expect it checked out as a
-// sibling directory (../seasonal-fcst-backend); override with CUMULUS_BACKEND_DIR.
+// sibling directory (../cumulus-backend); override with CUMULUS_BACKEND_DIR.
 const backendDir = process.env.CUMULUS_BACKEND_DIR
   ? path.resolve(process.env.CUMULUS_BACKEND_DIR)
-  : path.resolve(__dirname, "..", "seasonal-fcst-backend");
+  : path.resolve(__dirname, "..", "cumulus-backend");
 const currentEnv = Object.fromEntries(
   Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
 );

@@ -6,12 +6,14 @@ import dynamic from "next/dynamic";
 import { DashboardDrawer } from "@/components/dashboard-drawer";
 import { FloatingControls } from "@/components/floating-controls";
 import type { DashboardView } from "@/components/floating-controls";
+import type { AreaSearchResult } from "@/components/area-search";
 import type { AreaHoverProvider, MapControlsHandle } from "@/components/forecast-raster-map";
 import { MapZoomControls } from "@/components/map-zoom-controls";
 import { RunBadge, SubseasonalDock, SubseasonalPanel, SubseasonalTopBar } from "@/components/subseasonal/subseasonal-panel";
 import { SubseasonalDrawer } from "@/components/subseasonal/subseasonal-drawer";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
 import { useSubseasonal } from "@/hooks/use-subseasonal";
+import { districtFullName, isPointInGeometry, loadMapData } from "@/lib/map-data";
 import {
   aggregationLabel,
   describeCountdown,
@@ -23,7 +25,7 @@ import {
   subseasonalTileUrl,
   writeUrlState,
 } from "@/lib/subseasonal";
-import type { ForecastGeographySelection, ForecastPointSelection, RegionMetadata } from "@/lib/types";
+import type { DistrictFeatureCollection, ForecastGeographySelection, ForecastPointSelection, RegionMetadata } from "@/lib/types";
 
 const ForecastRasterMap = dynamic(
   () => import("@/components/forecast-raster-map").then((module) => module.ForecastRasterMap),
@@ -32,6 +34,8 @@ const ForecastRasterMap = dynamic(
 
 /** Close to opaque so the map matches the legend; place labels are drawn above the raster. */
 const SUBSEASONAL_TILE_OPACITY = 0.85;
+/** Same as the static title in app/layout.tsx; shown until an area is selected on the 46-day map. */
+const DEFAULT_PAGE_TITLE = "Cumulus · Ghana Forecast Map";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
@@ -141,6 +145,22 @@ export function DashboardShell() {
     }
   }, []);
 
+  // A search pick acts like clicking the area on the map, switching geography level if needed, then zooms to it.
+  const mapControlsRef = useRef(mapControls);
+  mapControlsRef.current = mapControls;
+  const handleAreaSearch = useCallback(
+    (result: AreaSearchResult) => {
+      setDashboardMode(result.level);
+      if (result.level === "district") {
+        handleMapSelectDistrict(result.key, result.name, result.regionName, result.latitude, result.longitude);
+      } else {
+        handleMapSelectRegion({ name: result.name, latitude: result.latitude, longitude: result.longitude });
+      }
+      mapControlsRef.current?.focusArea(result.geometry);
+    },
+    [handleMapSelectDistrict, handleMapSelectRegion, setDashboardMode],
+  );
+
   /* ------------------------------------------------------------ 46-day map wiring */
   const { query, layerMeta, areaValues, run } = subseasonal;
   const subseasonalGeography = useMemo<ForecastGeographySelection | null>(() => {
@@ -233,6 +253,56 @@ export function DashboardShell() {
     };
   }, [areaValues, isSubseasonal, layerMeta, query]);
 
+  // District boundaries for the tab title: full district names, and the district under a clicked point.
+  const [districtFeatures, setDistrictFeatures] = useState<DistrictFeatureCollection | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadMapData()
+      .then((mapData) => {
+        if (!cancelled) {
+          setDistrictFeatures(mapData.districtFeatures);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The tab title names the selected area, e.g. "Accra Onset - Accra Metro District, Ghana".
+  const { layer, selection } = subseasonal;
+  const pageTitle = useMemo(() => {
+    if (!isSubseasonal || !run || !selection) {
+      return DEFAULT_PAGE_TITLE;
+    }
+    const layerName = layerLabel(run, layer);
+    if (selection.kind === "area" && selection.level === "region") {
+      return `${selection.name} ${layerName} - ${selection.name} Region, Ghana`;
+    }
+    if (!districtFeatures) {
+      return DEFAULT_PAGE_TITLE;
+    }
+    // A restored link names the district before the map resolves its key, so match by name too.
+    const district =
+      selection.kind === "area"
+        ? districtFeatures.features.find(
+            (feature) =>
+              feature.properties.location_id === selection.geographyKey ||
+              feature.properties.display_name.toLowerCase() === selection.name.toLowerCase(),
+          )
+        : districtFeatures.features.find((feature) =>
+            isPointInGeometry(selection.latitude, selection.longitude, feature.geometry),
+          );
+    if (!district) {
+      return DEFAULT_PAGE_TITLE;
+    }
+    return `${district.properties.display_name} ${layerName} - ${districtFullName(district.properties)}, Ghana`;
+  }, [districtFeatures, isSubseasonal, layer, run, selection]);
+
+  useEffect(() => {
+    document.title = pageTitle;
+  }, [pageTitle]);
+
   const collapsedSummary = [
     layerLabel(run, subseasonal.layer),
     subseasonal.aggregation === "total" && subseasonal.layer !== "onset"
@@ -269,7 +339,7 @@ export function DashboardShell() {
           />
 
           <div className="chrome-layer">
-            <MapZoomControls controls={mapControls} />
+            <MapZoomControls controls={mapControls} onSearchSelect={handleAreaSearch} />
             {isSubseasonal ? (
               <SubseasonalTopBar state={subseasonal} onSeasonal={SEASONAL_ENABLED ? () => changeView("seasonal") : undefined} />
             ) : null}

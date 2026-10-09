@@ -112,9 +112,17 @@ export function useSubseasonal({
     }
   }, [layer, run]);
 
+  // Hold the first query until the clamp below has picked the day, so the map does not fetch
+  // day 1 only to abort it a moment later for today.
+  const isTimeSettled =
+    run !== null &&
+    day >= 1 &&
+    day <= Math.max(run.lead_days, 1) &&
+    week >= 1 &&
+    week <= Math.max(run.weeks.length, 1);
   const query = useMemo<LayerQuery | null>(
-    () => (run ? { runId: run.run_id, layer, aggregation: effectiveAggregation, index } : null),
-    [effectiveAggregation, index, layer, run],
+    () => (run && isTimeSettled ? { runId: run.run_id, layer, aggregation: effectiveAggregation, index } : null),
+    [effectiveAggregation, index, isTimeSettled, layer, run],
   );
   const tileUrl = useMemo(() => (query ? subseasonalTileUrl(query) : null), [query]);
 

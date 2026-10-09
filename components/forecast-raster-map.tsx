@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { FeatureCollection } from "geojson";
 import type { LatLngBounds, LatLngBoundsExpression, LeafletMouseEvent } from "leaflet";
@@ -87,13 +87,52 @@ const COUNTRY_BORDER_STYLE = { color: "#3d4a55", weight: 1.4, opacity: 0.9, line
 const COASTLINE_STYLE = { color: "#3d4a55", weight: 1.4, opacity: 0.9 };
 const GHANA_OUTLINE_STYLE = { color: "#26313a", weight: 1.8, opacity: 0.95, lineJoin: "round" as const };
 const WATER_AREA_STYLE = { color: "#6f93b0", weight: 0.6, opacity: 0.9, fillColor: "#9dbbd3", fillOpacity: 1 };
+const REGION_OUTLINE_STYLE = { fillOpacity: 0, color: MAP_STROKE_SOFT, weight: 1, opacity: 1 };
+/**
+ * react-leaflet restyles every feature of a GeoJSON layer whenever its `style` or `pathOptions`
+ * prop changes identity (a missing `pathOptions` counts as changed on every render), so both are
+ * kept stable and the map only restyles when the selection actually changes.
+ */
+const NO_PATH_OPTIONS = {};
+const getCountryBorderStyle = () => COUNTRY_BORDER_STYLE;
+const getCoastlineStyle = () => COASTLINE_STYLE;
+const getGhanaOutlineStyle = () => GHANA_OUTLINE_STYLE;
+const getWaterAreaStyle = () => WATER_AREA_STYLE;
+const getRegionOutlineStyle = () => REGION_OUTLINE_STYLE;
+const SELECTED_POINT_HALO_STYLE = {
+  color: "rgba(255, 255, 255, 0.56)",
+  weight: 1,
+  fillColor: "#23d1ad",
+  fillOpacity: 0.16,
+  opacity: 0.9,
+};
+const SELECTED_POINT_STYLE = { color: "#ffffff", weight: 2, fillColor: "#23d1ad", fillOpacity: 0.88 };
+
+/** One fetch and parse per file for the page's lifetime, however often the layers remount. */
+const geoJsonCache = new Map<string, Promise<FeatureCollection | null>>();
+
+function loadGeoJson(url: string) {
+  let promise = geoJsonCache.get(url);
+  if (!promise) {
+    promise = fetch(url)
+      .then((response) => (response.ok ? (response.json() as Promise<FeatureCollection>) : null))
+      .catch(() => null);
+    promise.then((payload) => {
+      // Let a failed load be retried on the next mount.
+      if (!payload) {
+        geoJsonCache.delete(url);
+      }
+    });
+    geoJsonCache.set(url, promise);
+  }
+  return promise;
+}
 
 function useGeoJson(url: string) {
   const [data, setData] = useState<FeatureCollection | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetch(url)
-      .then((response) => (response.ok ? (response.json() as Promise<FeatureCollection>) : null))
+    loadGeoJson(url)
       .then((payload) => {
         if (payload && !cancelled) {
           setData(payload);
@@ -116,6 +155,7 @@ function BasemapBorderMask() {
   const borders = useGeoJson(ALL_BORDERS_URL);
   const zoom = useMapZoom();
   const weight = borderMaskWeight(zoom);
+  const style = useMemo(() => () => ({ ...BORDER_MASK_STYLE, weight }), [weight]);
   return borders && zoom <= CUSTOM_BORDERS_MAX_ZOOM ? (
     <GeoJSON
       // Re-mount on width change: GeoJSON styles are applied when the layer is created.
@@ -123,7 +163,8 @@ function BasemapBorderMask() {
       data={borders}
       interactive={false}
       pane="basemap-border-mask-pane"
-      style={() => ({ ...BORDER_MASK_STYLE, weight })}
+      pathOptions={NO_PATH_OPTIONS}
+      style={style}
     />
   ) : null;
 }
@@ -132,14 +173,26 @@ function BasemapBorderMask() {
 function GhanaOutline() {
   const outline = useGeoJson(GHANA_OUTLINE_URL);
   return outline ? (
-    <GeoJSON data={outline} interactive={false} pane="ghana-outline-pane" style={() => GHANA_OUTLINE_STYLE} />
+    <GeoJSON
+      data={outline}
+      interactive={false}
+      pane="ghana-outline-pane"
+      pathOptions={NO_PATH_OPTIONS}
+      style={getGhanaOutlineStyle}
+    />
   ) : null;
 }
 
 function WaterAreas() {
   const water = useGeoJson(WATER_AREAS_URL);
   return water ? (
-    <GeoJSON data={water} interactive={false} pane="water-areas-pane" style={() => WATER_AREA_STYLE} />
+    <GeoJSON
+      data={water}
+      interactive={false}
+      pane="water-areas-pane"
+      pathOptions={NO_PATH_OPTIONS}
+      style={getWaterAreaStyle}
+    />
   ) : null;
 }
 
@@ -153,10 +206,22 @@ function CountryOutlines() {
   return (
     <>
       {borders ? (
-        <GeoJSON data={borders} interactive={false} pane="country-outline-pane" style={() => COUNTRY_BORDER_STYLE} />
+        <GeoJSON
+          data={borders}
+          interactive={false}
+          pane="country-outline-pane"
+          pathOptions={NO_PATH_OPTIONS}
+          style={getCountryBorderStyle}
+        />
       ) : null}
       {coastline ? (
-        <GeoJSON data={coastline} interactive={false} pane="country-outline-pane" style={() => COASTLINE_STYLE} />
+        <GeoJSON
+          data={coastline}
+          interactive={false}
+          pane="country-outline-pane"
+          pathOptions={NO_PATH_OPTIONS}
+          style={getCoastlineStyle}
+        />
       ) : null}
     </>
   );
@@ -639,6 +704,25 @@ function ForecastMapOverlay({
   const areaHoverRef = useRef(areaHover);
   areaHoverRef.current = areaHover;
   const hoveredRef = useRef<{ layer: TooltipLayer; geography: HoverGeography } | null>(null);
+  // Feature handlers are bound once per layer, so they read the current callbacks through a ref.
+  const selectHandlersRef = useRef({ onSelectDistrict, onSelectRegion });
+  selectHandlersRef.current = { onSelectDistrict, onSelectRegion };
+  const setGeoJsonLayer = useCallback((layer: L.GeoJSON | null) => {
+    geoJsonRef.current = layer;
+  }, []);
+  const selectedKey = selectedGeography?.geographyKey ?? null;
+  const regionSelectionStyle = useCallback(
+    (feature?: RegionFeature) => regionStyle(feature?.properties.region === selectedKey),
+    [selectedKey],
+  );
+  const regionHaloSelectionStyle = useCallback(
+    (feature?: RegionFeature) => regionHaloStyle(feature?.properties.region === selectedKey),
+    [selectedKey],
+  );
+  const districtSelectionStyle = useCallback(
+    (feature?: DistrictFeature) => districtStyle(feature?.properties.location_id === selectedKey),
+    [selectedKey],
+  );
 
   // Keep an open tooltip in sync while the 46-day map animates underneath it.
   useEffect(() => {
@@ -812,15 +896,16 @@ function ForecastMapOverlay({
             key="forecast-regions-halo"
             data={regionFeatures}
             interactive={false}
-            style={(feature) => regionHaloStyle(feature?.properties.region === selectedGeography?.geographyKey)}
+            pathOptions={NO_PATH_OPTIONS}
+            style={regionHaloSelectionStyle}
           />
           <GeoJSON
-            key={`forecast-regions-${currentHoverContextKey}-${selectedGeography?.geographyKey ?? "none"}`}
-            ref={(layer) => {
-              geoJsonRef.current = layer;
-            }}
+            // Re-created only when the hover context changes; a new selection just restyles it.
+            key={`forecast-regions-${currentHoverContextKey}`}
+            ref={setGeoJsonLayer}
             data={regionFeatures}
-            style={(feature) => regionStyle(feature?.properties.region === selectedGeography?.geographyKey)}
+            pathOptions={NO_PATH_OPTIONS}
+            style={regionSelectionStyle}
             onEachFeature={(feature, layer) => {
               bindValueTooltip(layer, {
                 geographyKey: feature.properties.region,
@@ -831,7 +916,7 @@ function ForecastMapOverlay({
               });
               layer.on("click", (event: LeafletMouseEvent) => {
                 L.DomEvent.stop(event.originalEvent);
-                onSelectRegion({
+                selectHandlersRef.current.onSelectRegion({
                   name: feature.properties.region,
                   latitude: feature.properties.latitude,
                   longitude: feature.properties.longitude,
@@ -846,15 +931,16 @@ function ForecastMapOverlay({
             key="forecast-region-outline-halo"
             data={regionFeatures}
             interactive={false}
-            style={(feature) => regionHaloStyle(feature?.properties.region === selectedGeography?.geographyKey)}
+            pathOptions={NO_PATH_OPTIONS}
+            style={regionHaloSelectionStyle}
           />
           <GeoJSON
-            key={`forecast-districts-${currentHoverContextKey}-${selectedGeography?.geographyKey ?? "none"}`}
-            ref={(layer) => {
-              geoJsonRef.current = layer;
-            }}
+            // Re-created only when the hover context changes; a new selection just restyles it.
+            key={`forecast-districts-${currentHoverContextKey}`}
+            ref={setGeoJsonLayer}
             data={districtFeatures}
-            style={(feature) => districtStyle(feature?.properties.location_id === selectedGeography?.geographyKey)}
+            pathOptions={NO_PATH_OPTIONS}
+            style={districtSelectionStyle}
             onEachFeature={(feature, layer) => {
               bindValueTooltip(layer, {
                 geographyKey: feature.properties.location_id,
@@ -865,7 +951,7 @@ function ForecastMapOverlay({
               });
               layer.on("click", (event: LeafletMouseEvent) => {
                 L.DomEvent.stop(event.originalEvent);
-                onSelectDistrict(
+                selectHandlersRef.current.onSelectDistrict(
                   feature.properties.location_id,
                   feature.properties.display_name,
                   feature.properties.region,
@@ -879,12 +965,8 @@ function ForecastMapOverlay({
             key="forecast-region-outline"
             data={regionFeatures}
             interactive={false}
-            style={() => ({
-              fillOpacity: 0,
-              color: MAP_STROKE_SOFT,
-              weight: 1,
-              opacity: 1,
-            })}
+            pathOptions={NO_PATH_OPTIONS}
+            style={getRegionOutlineStyle}
           />
         </>
       )}
@@ -892,7 +974,7 @@ function ForecastMapOverlay({
   );
 }
 
-export function ForecastRasterMap({
+export const ForecastRasterMap = memo(function ForecastRasterMap({
   dashboardMode,
   viewMode,
   thematicMode,
@@ -929,6 +1011,11 @@ export function ForecastRasterMap({
   areaHover?: AreaHoverProvider | null;
   onMapReady?: (handle: MapControlsHandle | null) => void;
 }) {
+  const productIdentity = product ? `${product.product_id}:${product.source_run_id}:${product.generated_at}` : "product-none";
+  const hoverContext = useMemo<HoverForecastContext>(
+    () => ({ viewMode, thematicMode, seasonProfile, subseason, isProductReady, productIdentity }),
+    [isProductReady, productIdentity, seasonProfile, subseason, thematicMode, viewMode],
+  );
   return (
     <MapContainer
       center={[7.9, -1.1]}
@@ -979,16 +1066,7 @@ export function ForecastRasterMap({
           dashboardMode={dashboardMode}
           selectedGeography={selectedGeography}
           areaHover={areaHover}
-          hoverContext={{
-            viewMode,
-            thematicMode,
-            seasonProfile,
-            subseason,
-            isProductReady,
-            productIdentity: product
-              ? `${product.product_id}:${product.source_run_id}:${product.generated_at}`
-              : "product-none",
-          }}
+          hoverContext={hoverContext}
           onSelectDistrict={onSelectDistrict}
           onSelectRegion={onSelectRegion}
         />
@@ -1005,27 +1083,16 @@ export function ForecastRasterMap({
             <CircleMarker
               center={[selectedPoint.latitude, selectedPoint.longitude]}
               radius={17}
-              pathOptions={{
-                color: "rgba(255, 255, 255, 0.56)",
-                weight: 1,
-                fillColor: "#23d1ad",
-                fillOpacity: 0.16,
-                opacity: 0.9,
-              }}
+              pathOptions={SELECTED_POINT_HALO_STYLE}
             />
             <CircleMarker
               center={[selectedPoint.latitude, selectedPoint.longitude]}
               radius={8}
-              pathOptions={{
-                color: "#ffffff",
-                weight: 2,
-                fillColor: "#23d1ad",
-                fillOpacity: 0.88,
-              }}
+              pathOptions={SELECTED_POINT_STYLE}
             />
           </>
         ) : null}
       </Pane>
     </MapContainer>
   );
-}
+});

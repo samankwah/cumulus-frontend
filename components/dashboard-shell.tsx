@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
 import { DashboardDrawer } from "@/components/dashboard-drawer";
@@ -23,7 +23,7 @@ import {
   subseasonalTileUrl,
   writeUrlState,
 } from "@/lib/subseasonal";
-import type { ForecastGeographySelection, ForecastPointSelection } from "@/lib/types";
+import type { ForecastGeographySelection, ForecastPointSelection, RegionMetadata } from "@/lib/types";
 
 const ForecastRasterMap = dynamic(
   () => import("@/components/forecast-raster-map").then((module) => module.ForecastRasterMap),
@@ -107,6 +107,37 @@ export function DashboardShell() {
     setView(next);
     if (next === "seasonal") {
       writeUrlState({ view: "seasonal", run: null, layer: "rainfall", aggregation: "daily", day: null, week: null, point: null, area: null });
+    }
+  }, []);
+
+  // The map is memoised, so it gets stable handlers that always call the current ones.
+  const mapHandlersRef = useRef({ isSubseasonal, subseasonal, selectDistrict, selectPoint, selectRegion });
+  mapHandlersRef.current = { isSubseasonal, subseasonal, selectDistrict, selectPoint, selectRegion };
+  const handleMapSelectDistrict = useCallback(
+    (key: string, name: string, region: string, latitude: number, longitude: number) => {
+      const handlers = mapHandlersRef.current;
+      if (handlers.isSubseasonal) {
+        handlers.subseasonal.selectArea("district", name, region, key, latitude, longitude);
+      } else {
+        handlers.selectDistrict(key, name, region, latitude, longitude);
+      }
+    },
+    [],
+  );
+  const handleMapSelectPoint = useCallback((latitude: number, longitude: number) => {
+    const handlers = mapHandlersRef.current;
+    if (handlers.isSubseasonal) {
+      handlers.subseasonal.selectPoint(latitude, longitude);
+    } else {
+      handlers.selectPoint(latitude, longitude);
+    }
+  }, []);
+  const handleMapSelectRegion = useCallback((region: RegionMetadata) => {
+    const handlers = mapHandlersRef.current;
+    if (handlers.isSubseasonal) {
+      handlers.subseasonal.selectArea("region", region.name, region.name, region.name, region.latitude, region.longitude);
+    } else {
+      handlers.selectRegion(region);
     }
   }, []);
 
@@ -228,19 +259,9 @@ export function DashboardShell() {
             product={isSubseasonal ? null : product}
             selectedPoint={isSubseasonal ? subseasonalPoint : currentSamplePoint}
             selectedGeography={isSubseasonal ? subseasonalGeography : selectedGeography}
-            onSelectDistrict={(key, name, region, latitude, longitude) =>
-              isSubseasonal
-                ? subseasonal.selectArea("district", name, region, key, latitude, longitude)
-                : selectDistrict(key, name, region, latitude, longitude)
-            }
-            onSelectPoint={(latitude, longitude) =>
-              isSubseasonal ? subseasonal.selectPoint(latitude, longitude) : selectPoint(latitude, longitude)
-            }
-            onSelectRegion={(region) =>
-              isSubseasonal
-                ? subseasonal.selectArea("region", region.name, region.name, region.name, region.latitude, region.longitude)
-                : selectRegion(region)
-            }
+            onSelectDistrict={handleMapSelectDistrict}
+            onSelectPoint={handleMapSelectPoint}
+            onSelectRegion={handleMapSelectRegion}
             raster={raster}
             areaHover={areaHover}
             fitKey={isSubseasonal ? (layerMeta ? "subseasonal-ready" : "subseasonal") : "seasonal"}

@@ -212,13 +212,28 @@ async function loadJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function loadMapData(): Promise<{
+type MapData = {
   districtFeatures: DistrictFeatureCollection;
   regionFeatures: RegionFeatureCollection;
   districts: DistrictMetadata[];
   districtsByRegion: Record<string, DistrictMetadata[]>;
   regions: RegionMetadata[];
-}> {
+};
+
+let mapDataPromise: Promise<MapData> | null = null;
+
+/** Loaded once per page and shared by every caller; treat the result as read-only. */
+export function loadMapData(): Promise<MapData> {
+  if (!mapDataPromise) {
+    mapDataPromise = buildMapData().catch((error: unknown) => {
+      mapDataPromise = null;
+      throw error;
+    });
+  }
+  return mapDataPromise;
+}
+
+async function buildMapData(): Promise<MapData> {
   const [rawDistricts, regions] = await Promise.all([
     loadJson<RawDistrictFeatureCollection>("/data/ghana_district_polygons_simplified.geojson"),
     loadJson<RegionFeatureCollection>("/data/ghana_regions_simplified.geojson"),

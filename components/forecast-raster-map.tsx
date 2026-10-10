@@ -51,6 +51,10 @@ const PAN_BOUNDS: LatLngBoundsExpression = [
 const MAP_PADDING_TOP_LEFT: [number, number] = [36, 48];
 const MAP_PADDING_BOTTOM_RIGHT: [number, number] = [36, 48];
 const DRAWER_CLEARANCE = 28;
+/** At or below this map width the layout is the phone one (matches the CSS breakpoint). */
+const PHONE_MAX_WIDTH = 860;
+/** Side margins for the country on phones, where the dock spans the full width. */
+const PHONE_SIDE_PADDING = 20;
 const MAP_STROKE = "rgba(32, 41, 50, 0.92)";
 const MAP_STROKE_SOFT = "rgba(73, 88, 104, 0.7)";
 const MAP_HALO = "rgba(119, 134, 150, 0.42)";
@@ -246,6 +250,7 @@ function getChromeAwarePadding(map: L.Map) {
   let right = MAP_PADDING_BOTTOM_RIGHT[0];
   let bottom = MAP_PADDING_BOTTOM_RIGHT[1];
   let hasWideDock = false;
+  let hasLeftColumn = false;
   const panels = stage
     ? stage.querySelectorAll<HTMLElement>(
         '.floating-controls .control-card, .floating-legend, .ss-topbar, [data-testid="dashboard-drawer"].open',
@@ -256,6 +261,10 @@ function getChromeAwarePadding(map: L.Map) {
     if (!rect.width || !rect.height) {
       return;
     }
+    // On phones the area drawer is a sheet over the map, closed with a swipe: it must not shrink the fit.
+    if (panel.matches('[data-testid="dashboard-drawer"]') && mapRect.width <= PHONE_MAX_WIDTH) {
+      return;
+    }
     const isLeftColumn = rect.width < mapRect.width * 0.5 && rect.height > mapRect.height * 0.35 && rect.left < mapRect.left + 80;
     const isTopBar = rect.width > mapRect.width * 0.5 && rect.top < mapRect.top + 60 && rect.height < mapRect.height * 0.25;
     // A full-screen drawer (phones) hides the map entirely; there is nothing to pad for.
@@ -264,6 +273,7 @@ function getChromeAwarePadding(map: L.Map) {
     if (isRightColumn) {
       right = Math.max(right, mapRect.right - rect.left + DRAWER_CLEARANCE);
     } else if (isLeftColumn) {
+      hasLeftColumn = true;
       left = Math.max(left, rect.right - mapRect.left + 24);
     } else if (isTopBar) {
       top = Math.max(top, rect.bottom - mapRect.top + 12);
@@ -272,14 +282,22 @@ function getChromeAwarePadding(map: L.Map) {
       // rather than over the empty map beside it.
       hasWideDock = true;
       bottom = Math.max(bottom, mapRect.bottom - rect.top + 8);
-      // The extra 100px leans the country a little toward the panel, the spot chosen by eye.
-      right = Math.max(right, mapRect.right - rect.right + 100);
+      // Desktop only (the dock sits beside the left panel): the extra 100px leans the country a little
+      // toward the panel, the spot chosen by eye. A phone's dock spans the full width.
+      if (rect.left > mapRect.left + 40) {
+        right = Math.max(right, mapRect.right - rect.right + 100);
+      }
     } else if (rect.bottom > mapRect.bottom - 60) {
       bottom = Math.max(bottom, mapRect.bottom - rect.top + 16);
     }
   });
   if (hasWideDock && top === MAP_PADDING_TOP_LEFT[0]) {
     top = 20;
+  }
+  // Phones (full-width dock, no side panel): let the country fill the width between small margins.
+  if (hasWideDock && !hasLeftColumn) {
+    left = PHONE_SIDE_PADDING;
+    right = PHONE_SIDE_PADDING;
   }
   // Never squeeze the country below a usable size.
   right = Math.min(right, mapRect.width * 0.5);

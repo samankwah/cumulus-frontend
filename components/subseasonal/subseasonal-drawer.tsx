@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AdvisoryPanel } from "@/components/subseasonal/advisory-panel";
 import { RainChart, WeeklyChart, WeeklyRainChart } from "@/components/subseasonal/rain-chart";
@@ -534,6 +534,46 @@ function LayerSections({
   );
 }
 
+/** Dragging the phone sheet down further than this closes it. */
+const SHEET_CLOSE_DRAG_PX = 110;
+
+/**
+ * Phone sheet behaviour (iOS-style): drag the header down to pull the sheet with the finger, and let
+ * go past a threshold to close it. Desktop ignores it (the drawer is a side card there).
+ */
+function useSheetDrag(onClose: () => void) {
+  const sheetRef = useRef<HTMLElement>(null);
+  const drag = useRef<{ startY: number; dy: number } | null>(null);
+
+  const setOffset = (px: number) => {
+    sheetRef.current?.style.setProperty("--ss-sheet-drag", `${px}px`);
+  };
+  const onPointerDown = (event: React.PointerEvent) => {
+    if (window.innerWidth > 860 || (event.target as HTMLElement).closest("button")) {
+      return;
+    }
+    drag.current = { startY: event.clientY, dy: 0 };
+    sheetRef.current?.classList.add("dragging");
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  };
+  const onPointerMove = (event: React.PointerEvent) => {
+    if (!drag.current) return;
+    drag.current.dy = Math.max(0, event.clientY - drag.current.startY);
+    setOffset(drag.current.dy);
+  };
+  const onPointerEnd = () => {
+    if (!drag.current) return;
+    const { dy } = drag.current;
+    drag.current = null;
+    sheetRef.current?.classList.remove("dragging");
+    setOffset(0);
+    if (dy > SHEET_CLOSE_DRAG_PX) {
+      onClose();
+    }
+  };
+  return { sheetRef, handlers: { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd } };
+}
+
 /** "Download CSV" and "Copy link" in the drawer footer: switched off for now, at the user's request. */
 const SHOW_DRAWER_ACTIONS = false;
 
@@ -541,6 +581,7 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
   const { series, run, layer } = state;
   const header = headerFor(state);
   const [copied, setCopied] = useState(false);
+  const sheet = useSheetDrag(state.closeDrawer);
   const currentDay = state.aggregation === "daily" ? state.index : null;
   const [crop, setCrop] = useCropPreference();
   const advisory = useMemo(() => (series ? buildSubseasonalAdvisory(layer, series, crop) : null), [crop, layer, series]);
@@ -576,12 +617,17 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
   };
 
   return (
+    <>
+    {/* Phones: the map dims behind the sheet; tapping it closes the sheet. */}
+    <div className={`ss-sheet-backdrop${state.isDrawerOpen ? " open" : ""}`} aria-hidden="true" onClick={state.closeDrawer} />
     <aside
+      ref={sheet.sheetRef}
       data-testid="dashboard-drawer"
       className={`drawer ss-drawer ss-layer-${layer}${state.isDrawerOpen ? " open" : ""}`}
       aria-label="Location forecast"
     >
-      <div className="drawer-header">
+      <span className="ss-sheet-grabber" aria-hidden="true" {...sheet.handlers} />
+      <div className="drawer-header" {...sheet.handlers}>
         <div>
           <span className="ss-drawer-layer">
             <span className="ss-drawer-layer-dot" aria-hidden="true" />
@@ -712,5 +758,6 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
         </>
       )}
     </aside>
+    </>
   );
 }

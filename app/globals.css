@@ -64,8 +64,9 @@ body {
   min-height: 100dvh;
   font-family: var(--font-body);
   color: var(--ink);
-  background-color: var(--bg);
   background: linear-gradient(145deg, #f0f4f8 0%, var(--bg) 48%, #dde6ef 100%);
+  /* After the shorthand, which would reset it: a solid colour for Safari to tint its bars from. */
+  background-color: #e2e8ee;
 }
 
 button,

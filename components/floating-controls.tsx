@@ -474,12 +474,12 @@ export function FloatingControls({
                   ·
                 </span>
                 {isSubseasonal
-                  ? "Sub-seasonal rainfall outlook"
+                  ? "Ghana"
                   : viewMode === "probabilistic"
                     ? "Probability forecast artifact"
                     : "Deterministic forecast artifact"}
               </span>
-              <h1>Forecast Map</h1>
+              <h1>{isSubseasonal ? "46-Day Forecast" : "Forecast Map"}</h1>
               {isSubseasonal ? subseasonalHeader : null}
             </div>
 

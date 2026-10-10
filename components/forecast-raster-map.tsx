@@ -33,6 +33,11 @@ const GHANA_BOUNDS: LatLngBoundsExpression = [
   [4.2, -3.3],
   [11.2, 1.4],
 ];
+/** The country's own outline, for fitting it snugly into the free map area. */
+const GHANA_FIT_BOUNDS: LatLngBoundsExpression = [
+  [4.73, -3.26],
+  [11.17, 1.2],
+];
 /**
  * Pan limit: Ghana plus a wide margin. The fit centres Ghana in whatever space the panels leave, so
  * the view itself sits far off-centre: ~5° south of the coast under a phone card, ~9° west of
@@ -240,6 +245,7 @@ function getChromeAwarePadding(map: L.Map) {
   let top = MAP_PADDING_TOP_LEFT[0];
   let right = MAP_PADDING_BOTTOM_RIGHT[0];
   let bottom = MAP_PADDING_BOTTOM_RIGHT[1];
+  let hasWideDock = false;
   const panels = stage
     ? stage.querySelectorAll<HTMLElement>(
         '.floating-controls .control-card, .floating-legend, .ss-topbar, [data-testid="dashboard-drawer"].open',
@@ -261,10 +267,20 @@ function getChromeAwarePadding(map: L.Map) {
       left = Math.max(left, rect.right - mapRect.left + 24);
     } else if (isTopBar) {
       top = Math.max(top, rect.bottom - mapRect.top + 12);
+    } else if (panel.classList.contains("floating-legend-subseasonal") && rect.width > mapRect.width * 0.4) {
+      // The 46-day dock is a wide bar: fill the height above it and centre the country over it,
+      // rather than over the empty map beside it.
+      hasWideDock = true;
+      bottom = Math.max(bottom, mapRect.bottom - rect.top + 8);
+      // The extra 100px leans the country a little toward the panel, the spot chosen by eye.
+      right = Math.max(right, mapRect.right - rect.right + 100);
     } else if (rect.bottom > mapRect.bottom - 60) {
       bottom = Math.max(bottom, mapRect.bottom - rect.top + 16);
     }
   });
+  if (hasWideDock && top === MAP_PADDING_TOP_LEFT[0]) {
+    top = 20;
+  }
   // Never squeeze the country below a usable size.
   right = Math.min(right, mapRect.width * 0.5);
   left = Math.min(left, mapRect.width * 0.55, Math.max(MAP_PADDING_TOP_LEFT[1], mapRect.width * 0.75 - right));
@@ -279,8 +295,16 @@ function getChromeAwarePadding(map: L.Map) {
  * fitBounds that survives a running animation. Leaflet discards or garbles a fit issued mid-animation
  * (a zoom's end restores its own target; a pan keeps running under the new zoom), so wait for it.
  */
-function fitWhenIdle(map: L.Map, bounds: LatLngBoundsExpression, options: L.FitBoundsOptions) {
-  const run = () => map.fitBounds(bounds, options);
+function fitWhenIdle(map: L.Map, bounds: LatLngBoundsExpression, options: L.FitBoundsOptions, exactZoom = false) {
+  const run = () => {
+    // Without snapping, the fit fills the free area exactly instead of rounding down a zoom step.
+    const snap = map.options.zoomSnap;
+    if (exactZoom) {
+      map.options.zoomSnap = 0;
+    }
+    map.fitBounds(bounds, options);
+    map.options.zoomSnap = snap;
+  };
   const state = map as unknown as { _animatingZoom?: boolean; _panAnim?: { _inProgress?: boolean } };
   if (state._animatingZoom) {
     map.once("zoomend", run);
@@ -292,7 +316,7 @@ function fitWhenIdle(map: L.Map, bounds: LatLngBoundsExpression, options: L.FitB
 }
 
 function fitGhana(map: L.Map, padding: ReturnType<typeof getChromeAwarePadding>, animate: boolean) {
-  fitWhenIdle(map, GHANA_BOUNDS, { ...padding, animate });
+  fitWhenIdle(map, GHANA_FIT_BOUNDS, { ...padding, animate }, true);
 }
 
 /** What the map controls drawn outside the map (zoom and reset, in the chrome layer) need from it. */

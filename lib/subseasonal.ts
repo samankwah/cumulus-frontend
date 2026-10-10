@@ -454,6 +454,31 @@ export function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Forecast days already gone by `today`: a run is often read a week or two after it was issued. */
+export function pastDayCount(series: SubseasonalSeries, today: string) {
+  return series.days.filter((day) => day.date < today).length;
+}
+
+export type SpellStatus = "past" | "now" | "coming";
+
+export function spellStatus(spell: SubseasonalSpell, today: string): SpellStatus {
+  if (spell.end_date < today) {
+    return "past";
+  }
+  return spell.start_date <= today ? "now" : "coming";
+}
+
+/** What a farmer asks of the spells of one kind: is one on now, when is the next, how many in all. */
+export function spellOutlook(series: SubseasonalSeries, kind: SpellKind, today: string) {
+  const spells = series.spells.filter((spell) => spell.kind === kind);
+  return {
+    spells,
+    now: spells.find((spell) => spellStatus(spell, today) === "now") ?? null,
+    next: spells.find((spell) => spellStatus(spell, today) === "coming") ?? null,
+    spellDays: series.days.filter((day) => day.spell === kind).length,
+  };
+}
+
 export function dayIndexForDate(run: SubseasonalRun, isoDate: string) {
   const match = run.days.find((day) => day.date === isoDate);
   return match ? match.day : null;

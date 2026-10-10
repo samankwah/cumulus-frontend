@@ -28,8 +28,14 @@ function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
   }
 }
 
-/** Onset in plain words for farmers; the drawer gives the exact rule. */
-const ONSET_SUMMARY = "When the rains have truly started and it is safe to plant.";
+/** Each layer in plain words for farmers; the cards' hints and the drawer give the exact rules. */
+const LAYER_SUMMARIES: Record<SubseasonalLayerKey, string> = {
+  onset: "When the rains have truly started and it is safe to plant.",
+  rainfall: "How much rain is expected.",
+  wet_spell_days: "Days in long stretches of steady rain.",
+  dry_spell_days: "Days in long stretches with little or no rain.",
+  rainy_days: "How many days will have rain.",
+};
 
 /** Small stroke glyphs for the layer cards, drawn in each layer's colour. */
 const LAYER_ICONS: Record<SubseasonalLayerKey, ReactNode> = {
@@ -138,9 +144,7 @@ export function IssueDatePicker({
 
 export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
   const run = state.run;
-  // Onset's own rule is long (the drawer explains it), so the panel gives a short plain version.
-  const activeDescription =
-    state.layer === "onset" ? ONSET_SUMMARY : run?.layers.find((item) => item.layer === state.layer)?.description;
+  const activeDescription = LAYER_SUMMARIES[state.layer];
 
   if (state.runsError) {
     return (
@@ -252,7 +256,7 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
     }
   }, [state.layer, state.run]);
   const run = state.run;
-  const description = state.layer === "onset" ? ONSET_SUMMARY : run?.layers.find((item) => item.layer === state.layer)?.description;
+  const description = LAYER_SUMMARIES[state.layer];
   return (
     <div className="ss-mobile-controls">
       <div className="ss-mobile-bar">

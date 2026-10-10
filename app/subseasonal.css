@@ -2482,6 +2482,16 @@
     display: none;
   }
 
+  /* The bottom card sits above the zoom buttons, so when its options open and it grows tall,
+     it covers them instead of the buttons floating over its controls. */
+  .view-subseasonal .floating-legend.floating-legend-subseasonal {
+    z-index: 730;
+  }
+
+  .view-subseasonal .ss-legend-caption {
+    font-size: 0.8rem;
+  }
+
   /* Phones: zoom buttons sit on the right, just under the top bar. */
   .view-subseasonal .map-zoom {
     top: calc(max(10px, env(safe-area-inset-top)) + 64px);
@@ -2769,7 +2779,7 @@
   .ss-option-note {
     margin: 0;
     color: var(--muted);
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     line-height: 1.4;
   }
 }

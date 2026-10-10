@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk } from "next/font/google";
 
 import "leaflet/dist/leaflet.css";
@@ -24,6 +24,19 @@ export const metadata: Metadata = {
     apple: { url: "/apple-touch-icon.png", sizes: "180x180" },
   },
   manifest: "/site.webmanifest",
+  // Added to the Home Screen, the app runs full screen with the map under the status bar.
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Cumulus" },
+};
+
+/**
+ * Edge to edge on phones: the page may draw under the status bar and home indicator (so
+ * env(safe-area-inset-*) is real), and Safari tints its bars with the map-panel grey, not white.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#e2e8ee",
 };
 
 export default function RootLayout({

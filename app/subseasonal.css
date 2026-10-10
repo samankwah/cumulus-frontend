@@ -1456,6 +1456,22 @@
   }
 }
 
+/* Phones: smaller legend values so dates like "25 Sep" fit whole in their narrow steps. */
+@media (max-width: 520px) {
+  .ss-legend-bar {
+    font-size: 0.68rem;
+    letter-spacing: -0.01em;
+  }
+
+  .ss-legend-step {
+    padding-left: 3px;
+  }
+
+  .ss-legend-unit {
+    padding: 0 6px;
+  }
+}
+
 /* The narrowest phones: the five drawer tabs tighten so every name stays whole. */
 @media (max-width: 380px) {
   .ss-drawer .ss-drawer-tabs {

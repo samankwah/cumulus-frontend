@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { aggregationLabel, availableLayers, formatInitTime, formatIssueDate, LAYER_FALLBACK_LABELS, LAYER_SHORT_LABELS } from "@/lib/subseasonal";
 import type { SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
@@ -26,6 +27,40 @@ function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
       return "Start of rains";
   }
 }
+
+/** Onset in plain words for farmers; the drawer gives the exact rule. */
+const ONSET_SUMMARY = "When the rains have truly started and it is safe to plant.";
+
+/** Small stroke glyphs for the layer cards, drawn in each layer's colour. */
+const LAYER_ICONS: Record<SubseasonalLayerKey, ReactNode> = {
+  onset: (
+    <>
+      <path d="M10 17v-6" />
+      <path d="M10 11c0-3.2-2.2-5-5.5-5 0 3.3 2.2 5 5.5 5Z" />
+      <path d="M10 13c0-3 2-4.7 5.5-4.7 0 3-2 4.7-5.5 4.7Z" />
+    </>
+  ),
+  rainfall: <path d="M10 2.8s-5 5.6-5 9.3a5 5 0 0 0 10 0c0-3.7-5-9.3-5-9.3Z" />,
+  wet_spell_days: (
+    <>
+      <path d="M6 12.5a3.6 3.6 0 0 1-.4-7.2 4.6 4.6 0 0 1 8.8 1.2 3 3 0 0 1-.4 6H6Z" />
+      <path d="M7 15.5 6.2 17.5M10.5 15.5l-.8 2M14 15.5l-.8 2" />
+    </>
+  ),
+  dry_spell_days: (
+    <>
+      <circle cx="10" cy="10" r="3.2" />
+      <path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3" />
+    </>
+  ),
+  rainy_days: (
+    <>
+      <rect x="3" y="4.5" width="14" height="12.5" rx="2.5" />
+      <path d="M3 8.5h14M7 2.8v3M13 2.8v3" />
+      <path d="M10 10.6s-1.7 1.9-1.7 3.1a1.7 1.7 0 0 0 3.4 0c0-1.2-1.7-3.1-1.7-3.1Z" />
+    </>
+  ),
+};
 
 export function RunBadge({ state }: { state: SubseasonalState }) {
   const run = state.run;
@@ -103,8 +138,9 @@ export function IssueDatePicker({
 
 export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
   const run = state.run;
-  // Onset's rule is long and already explained in the drawer, so the panel stays clean for it.
-  const activeDescription = state.layer === "onset" ? null : run?.layers.find((item) => item.layer === state.layer)?.description;
+  // Onset's own rule is long (the drawer explains it), so the panel gives a short plain version.
+  const activeDescription =
+    state.layer === "onset" ? ONSET_SUMMARY : run?.layers.find((item) => item.layer === state.layer)?.description;
 
   if (state.runsError) {
     return (
@@ -124,7 +160,7 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
 
   return (
     <>
-      <div className="control-group">
+      <div className="control-group ss-layer-group">
         <div className="control-field">
           <span className="control-label" id="ss-layer-label">
             Layer
@@ -145,13 +181,24 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
                   disabled={!run}
                   onClick={() => state.setLayer(layer)}
                 >
-                  <span className={`ss-layer-dot ss-dot-${layer}`} aria-hidden="true" />
+                  <svg className="ss-layer-icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                    {LAYER_ICONS[layer]}
+                  </svg>
                   <strong>{narrow ? LAYER_SHORT_LABELS[layer] : (run?.layers.find((item) => item.layer === layer)?.label ?? LAYER_FALLBACK_LABELS[layer])}</strong>
                   <small>{layerHint(state, layer)}</small>
                 </button>
               );
             })}
           </div>
+          {activeDescription ? (
+            <p className="ss-layer-description">
+              <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                <circle cx="10" cy="10" r="7.5" />
+                <path d="M10 9v4.5M10 6.4v.1" />
+              </svg>
+              <span>{activeDescription}</span>
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -183,8 +230,6 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
           </div>
         </div>
       ) : null}
-
-      {activeDescription ? <p className="control-inline-note ss-layer-description">{activeDescription}</p> : null}
     </>
   );
 }
@@ -207,7 +252,7 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
     }
   }, [state.layer, state.run]);
   const run = state.run;
-  const description = state.layer === "onset" ? null : run?.layers.find((item) => item.layer === state.layer)?.description;
+  const description = state.layer === "onset" ? ONSET_SUMMARY : run?.layers.find((item) => item.layer === state.layer)?.description;
   return (
     <div className="ss-mobile-controls">
       <div className="ss-mobile-bar">
@@ -227,6 +272,9 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
                 event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
               }}
             >
+              <svg className="ss-chip-icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                {LAYER_ICONS[layer]}
+              </svg>
               {LAYER_SHORT_LABELS[layer]}
             </button>
           ))}
@@ -314,7 +362,7 @@ export function SubseasonalTopBar({ state, onSeasonal }: { state: SubseasonalSta
           </button>
         </div>
       ) : (
-        <span className="ss-topbar-title">46-day outlook</span>
+        <span className="ss-topbar-title">46-Day Forecast</span>
       )}
       {run && state.activeRunId && run.run_id !== state.activeRunId ? (
         <span className="ss-topbar-run" data-testid="ss-topbar-run" title={`${run.model_label} run initialised ${formatInitTime(run.init_time)}`}>

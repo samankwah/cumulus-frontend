@@ -3,6 +3,10 @@
    ========================================================================== */
 
 :root {
+  /* Desktop 46-day control panel width; the dock starts beside it. */
+  --ss-panel-width: 470px;
+  /* Room kept under the panel for the full-width dock on mid-size screens. */
+  --ss-dock-clearance: 230px;
   --ss-rain: #2f7fd0;
   --ss-rain-soft: rgba(47, 127, 208, 0.28);
   --ss-dry: #e8913a;
@@ -113,19 +117,206 @@
   justify-content: flex-end;
 }
 
+/* Desktop panel header: one quiet meta line rather than three kinds of pill. */
+.brand-block .ss-run {
+  gap: 4px 0;
+  margin-top: 16px;
+}
+
+.brand-block .ss-run > span {
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 0.9rem;
+}
+
+.brand-block .ss-run > span + span::before {
+  order: -2;
+  content: "·";
+  margin: 0 8px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.brand-block .ss-run .ss-run-model {
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--map-panel-surface-strong);
+  box-shadow: var(--neo-raised-tight);
+  color: var(--accent-strong);
+  min-height: 26px;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+.brand-block .ss-run .ss-run-model + span {
+  margin-left: 12px;
+}
+
+.brand-block .ss-run .ss-run-model + span::before {
+  content: none;
+}
+
+.brand-block .ss-run .ss-run-issue {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.brand-block .ss-run .ss-run-issue.choosable {
+  padding-right: 0;
+  border-radius: 4px;
+}
+
+.brand-block .ss-run .ss-run-issue.choosable:hover {
+  background: none;
+  text-decoration: underline;
+  text-decoration-color: rgba(30, 42, 51, 0.35);
+  text-underline-offset: 3px;
+}
+
+.brand-block .ss-run .ss-run-stale,
+.brand-block .ss-run .ss-run-earlier {
+  gap: 6px;
+  font-weight: 600;
+}
+
+.brand-block .ss-run .ss-run-stale {
+  color: #8a6106;
+}
+
+.brand-block .ss-run .ss-run-earlier {
+  color: #24508f;
+}
+
+/* Status dot, drawn inside the text so it follows the separator. */
+.brand-block .ss-run .ss-run-stale::after,
+.brand-block .ss-run .ss-run-earlier::after {
+  content: "";
+  order: -1;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent-amber);
+  box-shadow: 0 0 0 3px rgba(239, 188, 38, 0.2);
+}
+
+.brand-block .ss-run .ss-run-earlier::after {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Card rhythm and controls (desktop 46-day panel) -------------------------- */
+
+@media (min-width: 861px) {
+  .view-subseasonal .control-card {
+    padding: 26px 20px 24px;
+  }
+
+  .view-subseasonal .control-card,
+  .view-subseasonal .control-card-content {
+    gap: 20px;
+  }
+
+  .view-subseasonal .ss-layer-grid {
+    gap: 14px 12px;
+  }
+
+  .view-subseasonal .ss-layer-group .control-field {
+    gap: 14px;
+  }
+
+  .view-subseasonal .floating-controls {
+    width: var(--ss-panel-width);
+    max-width: var(--ss-panel-width);
+  }
+
+  .view-subseasonal .brand-block .eyebrow {
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+  }
+
+  .view-subseasonal .brand-block h1 {
+    font-size: clamp(1.95rem, 1.6vw, 2.25rem);
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+  }
+
+  .view-subseasonal .control-card .control-label {
+    font-size: 0.84rem;
+    letter-spacing: 0.06em;
+  }
+
+  /* "What" (the layer) above an engraved groove, "how" (period, areas) below it. */
+  .view-subseasonal .ss-layer-group {
+    padding-bottom: 22px;
+    background:
+      linear-gradient(rgba(118, 134, 151, 0.26), rgba(118, 134, 151, 0.26)) bottom / 100% 1px no-repeat,
+      linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7)) bottom 0 left 0 / 100% 2px no-repeat;
+  }
+
+  /* Period and Geography: a label beside a slim segmented track. */
+  .view-subseasonal .control-card .control-group:has(> .control-field > .segmented) {
+    gap: 0;
+  }
+
+  .view-subseasonal .control-card .control-field:has(> .segmented) {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* A sunken neumorphic track; the chosen option rises out of it. */
+  .view-subseasonal .control-card .segmented {
+    display: grid;
+    gap: 4px;
+    min-height: 50px;
+    padding: 5px;
+    border-radius: 999px;
+    background: var(--map-panel-surface-soft);
+    box-shadow: var(--neo-inset-soft);
+  }
+
+  .view-subseasonal .control-card .segmented button {
+    padding: 7px 8px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--muted);
+    font-size: 0.98rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .view-subseasonal .control-card .segmented button:hover:not(:disabled) {
+    color: var(--ink);
+    transform: none;
+  }
+
+  .view-subseasonal .control-card .segmented button[aria-selected="true"] {
+    background: var(--map-panel-surface-strong);
+    color: var(--ink);
+    font-weight: 700;
+    box-shadow: var(--neo-raised-tight);
+  }
+}
+
 /* Layer chooser ------------------------------------------------------------ */
 
 /* Phone top bar title when the outlook switch is off. */
 .ss-topbar-title {
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
+  min-height: 40px;
   padding: 0 14px;
   border-radius: 999px;
   background: var(--map-panel-surface-strong);
   box-shadow: var(--map-card-shadow);
   color: var(--ink);
-  font-size: 0.82rem;
+  font-size: 0.98rem;
   font-weight: 800;
 }
 
@@ -137,18 +328,20 @@
 }
 
 .ss-layer-option {
+  --layer-dot: var(--ss-rain);
+  position: relative;
   grid-column: span 2;
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr);
+  grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
-  column-gap: 6px;
+  column-gap: 8px;
   row-gap: 4px;
   min-width: 0;
-  padding: 11px 10px 10px;
+  padding: 14px 12px 13px 14px;
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 18px;
-  background: var(--map-panel-surface-soft);
-  color: var(--ink);
+  background: var(--map-panel-surface);
+  color: var(--muted);
   text-align: left;
   box-shadow: var(--map-card-shadow);
   cursor: pointer;
@@ -156,7 +349,17 @@
     transform 160ms ease,
     background 160ms ease,
     box-shadow 160ms ease,
-    border-color 160ms ease;
+    color 160ms ease;
+}
+
+/* The three narrow cards: tighter insides so the short names fit whole at the larger size. */
+.ss-layer-grid.count-5 .ss-layer-option:nth-child(n + 3) {
+  column-gap: 6px;
+  padding-inline: 10px;
+}
+
+.ss-layer-grid.count-5 .ss-layer-option:nth-child(n + 3) strong {
+  font-size: 0.98rem;
 }
 
 /* Two wide cards on top, three below. */
@@ -171,7 +374,7 @@
 
 .ss-layer-option strong {
   overflow: hidden;
-  font-size: 0.86rem;
+  font-size: 1.04rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.2;
@@ -183,54 +386,75 @@
   grid-column: 1 / -1;
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.86rem;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ss-layer-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--layer-dot, var(--ss-rain));
-  opacity: 0.45;
+.ss-layer-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--layer-dot);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.6;
   transition: opacity 160ms ease, transform 160ms ease;
 }
 
-.ss-dot-rainy_days {
-  --layer-dot: var(--accent-teal);
+.ss-layer-option.ss-layer-rainfall {
+  --layer-dot: var(--ss-rain);
 }
 
-.ss-dot-dry_spell_days {
+.ss-layer-option.ss-layer-rainy_days {
+  --layer-dot: #17a88a;
+}
+
+.ss-layer-option.ss-layer-dry_spell_days {
   --layer-dot: var(--ss-dry);
 }
 
-.ss-dot-wet_spell_days {
+.ss-layer-option.ss-layer-wet_spell_days {
   --layer-dot: var(--ss-wet);
 }
 
-.ss-dot-onset {
+.ss-layer-option.ss-layer-onset {
   --layer-dot: var(--ss-onset);
 }
 
 .ss-layer-option:hover:not(:disabled):not(.active) {
   background: var(--map-panel-surface-strong);
+  color: var(--ink);
   transform: translateY(-1px);
 }
 
-.ss-layer-option.active {
-  border-color: rgba(35, 209, 173, 0.6);
-  background: var(--map-panel-surface-strong);
-  box-shadow:
-    inset 0 0 0 1px rgba(35, 209, 173, 0.45),
-    var(--map-card-shadow);
+.ss-layer-option:hover:not(:disabled):not(.active) .ss-layer-icon {
+  opacity: 0.9;
 }
 
-.ss-layer-option.active .ss-layer-dot {
+/* Selected: pressed into the panel, the neumorphic "on" state. */
+.ss-layer-option.active {
+  border-color: transparent;
+  background: var(--map-panel-surface-soft);
+  color: var(--ink);
+  box-shadow: var(--neo-inset);
+}
+
+.ss-layer-option.active strong {
+  font-weight: 800;
+}
+
+.ss-layer-option.active small {
+  color: var(--ink);
+  opacity: 0.78;
+}
+
+.ss-layer-option.active .ss-layer-icon {
   opacity: 1;
-  transform: scale(1.2);
+  transform: scale(1.06);
 }
 
 .ss-layer-option:disabled {
@@ -257,7 +481,24 @@
 }
 
 .ss-layer-description {
-  margin: -6px 2px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 2px 2px 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+
+.ss-layer-description svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
 }
 
 /* Dock: timeline + legend -------------------------------------------------- */
@@ -624,7 +865,7 @@
 
 .ss-kpis dd small {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 700;
 }
 
@@ -663,13 +904,13 @@
   min-height: 22px;
   padding: 0 4px;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   font-variant-numeric: tabular-nums;
 }
 
 .ss-chart-readout strong {
   color: var(--ink);
-  font-size: 1.05rem;
+  font-size: 1.21rem;
 }
 
 .ss-chart-band.dry {
@@ -705,14 +946,14 @@
 
 .ss-chart-axis {
   fill: var(--muted);
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .ss-chart-week-total {
   fill: var(--ink);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -745,7 +986,7 @@
   gap: 6px 14px;
   padding: 0 4px;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   font-weight: 600;
 }
 
@@ -780,7 +1021,7 @@
 .ss-onset-rule {
   margin: 12px 0 0;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   line-height: 1.45;
 }
 
@@ -806,7 +1047,7 @@
 
 .ss-calendar-weekdays span {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   font-weight: 700;
   text-align: center;
 }
@@ -819,7 +1060,7 @@
   border-radius: 9px;
   background: var(--map-panel-surface-strong);
   color: var(--ink);
-  font-size: 0.74rem;
+  font-size: 0.85rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   transition: transform 120ms ease;
@@ -901,14 +1142,14 @@
   padding: 10px 14px;
   border-radius: 16px;
   background: var(--map-panel-surface-strong);
-  font-size: 0.84rem;
+  font-size: 0.97rem;
   box-shadow: var(--map-card-shadow);
 }
 
 .ss-spell-kind {
   padding: 3px 9px;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -937,7 +1178,7 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0 6px;
-  font-size: 0.84rem;
+  font-size: 0.97rem;
 }
 
 .ss-weeks th,
@@ -949,7 +1190,7 @@
 .ss-weeks thead th {
   padding-block: 0;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -994,7 +1235,7 @@
   border-radius: 12px;
   background: rgba(239, 188, 38, 0.1);
   color: var(--ink);
-  font-size: 0.82rem;
+  font-size: 0.94rem;
   line-height: 1.45;
 }
 
@@ -1006,13 +1247,13 @@
 .ss-source {
   margin: 0;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.83rem;
 }
 
 .ss-muted {
   margin: 0;
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: 0.97rem;
 }
 
 .ss-drawer-skeleton {
@@ -1097,6 +1338,7 @@
   .crossfade-tile-layer,
   .ss-bar,
   .ss-layer-option,
+  .ss-layer-icon,
   .ss-calendar-day,
   .ss-icon-button {
     transition: none;
@@ -1111,7 +1353,7 @@
 @media (min-width: 861px) {
   .view-subseasonal .floating-legend.floating-legend-subseasonal {
     --ss-gutter: clamp(16px, 1.8vw, 24px);
-    left: calc(var(--ss-gutter) * 2 + 420px);
+    left: calc(var(--ss-gutter) * 2 + var(--ss-panel-width));
     right: var(--ss-gutter);
     width: auto;
     max-width: 1040px;
@@ -1143,10 +1385,6 @@
   .view-subseasonal.ss-drawer-open .map-zoom {
     right: calc(min(480px, 100vw) + 2 * clamp(16px, 1.8vw, 24px));
   }
-}
-
-.control-inline-note.ss-layer-description {
-  color: var(--muted);
 }
 
 @media (max-width: 520px) {
@@ -1244,7 +1482,7 @@
   background: var(--map-panel-surface-strong);
   box-shadow: var(--map-card-shadow);
   color: var(--ink);
-  font-size: 0.74rem;
+  font-size: 0.85rem;
   font-weight: 800;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -1262,6 +1500,23 @@
   margin-top: 14px;
 }
 
+/* Larger type for farmers: the shared drawer headings and buttons, in this drawer only. */
+.ss-drawer .drawer-header p {
+  font-size: 1.08rem;
+}
+
+.ss-drawer .section-kicker {
+  font-size: 0.8rem;
+}
+
+.ss-drawer .section-heading h3 {
+  font-size: 1.3rem;
+}
+
+.ss-drawer .ghost-button {
+  font-size: 1rem;
+}
+
 .ss-drawer-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1277,7 +1532,7 @@
   border-radius: 999px;
   box-shadow: var(--map-inset-shadow);
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.85rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -1313,7 +1568,7 @@
 
 .ss-hero-label {
   color: var(--drawer-muted);
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -1329,13 +1584,13 @@
 
 .ss-hero-value small {
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-weight: 700;
 }
 
 .ss-hero-context {
   color: var(--drawer-muted);
-  font-size: 0.88rem;
+  font-size: 1.01rem;
   line-height: 1.4;
 }
 
@@ -1388,7 +1643,7 @@
 
 .ss-crop-label {
   color: var(--drawer-muted);
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   font-weight: 700;
 }
 
@@ -1399,7 +1654,7 @@
   background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.94rem;
   font-weight: 800;
   cursor: pointer;
   appearance: none;
@@ -1454,14 +1709,14 @@
 .ss-advisory h3 {
   margin: 0;
   color: var(--drawer-ink);
-  font-size: 1.12rem;
+  font-size: 1.29rem;
   line-height: 1.25;
 }
 
 .ss-advisory-context {
   margin: 4px 0 0;
   color: var(--drawer-muted);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   line-height: 1.4;
 }
 
@@ -1495,7 +1750,7 @@
 .ss-action-when {
   grid-row: span 2;
   color: var(--ss-tone);
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 800;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
@@ -1503,7 +1758,7 @@
 
 .ss-action-text {
   color: var(--drawer-ink);
-  font-size: 0.9rem;
+  font-size: 1.03rem;
   line-height: 1.45;
 }
 
@@ -1513,7 +1768,7 @@
   align-items: center;
   gap: 5px;
   color: var(--drawer-muted);
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   font-weight: 700;
   cursor: help;
 }
@@ -1542,7 +1797,7 @@
   border-top: 1px solid var(--drawer-line);
   padding-top: 10px;
   color: var(--drawer-muted);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   line-height: 1.45;
 }
 
@@ -1691,7 +1946,7 @@
 .ss-hero-whole {
   margin-top: 4px;
   color: var(--drawer-muted);
-  font-size: 0.76rem;
+  font-size: 0.87rem;
   font-weight: 700;
 }
 
@@ -1721,7 +1976,7 @@
     background: transparent;
     color: var(--muted);
     font: inherit;
-    font-size: 0.72rem;
+    font-size: 0.83rem;
     font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
@@ -1817,7 +2072,7 @@
     min-width: 0;
     overflow: hidden;
     color: var(--muted);
-    font-size: 0.72rem;
+    font-size: 0.84rem;
     font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1830,9 +2085,9 @@
   .ss-topbar-run.stale::before {
     content: "";
     display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-right: 5px;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
     border-radius: 50%;
     background: var(--accent-amber);
     vertical-align: 1px;
@@ -1850,9 +2105,12 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
-    margin: -2px -2px 10px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--line);
+    margin: -2px -2px 12px;
+    padding-bottom: 14px;
+    /* Engraved groove rather than a flat rule. */
+    background:
+      linear-gradient(rgba(118, 134, 151, 0.26), rgba(118, 134, 151, 0.26)) bottom / 100% 1px no-repeat,
+      linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7)) bottom 0 left 0 / 100% 2px no-repeat;
   }
 
   .ss-mobile-bar {
@@ -1887,31 +2145,34 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 34px;
-    padding: 0 11px;
+    min-height: 42px;
+    padding: 0 13px 0 11px;
     border: 1px solid transparent;
     border-radius: 999px;
     background: transparent;
     color: var(--muted);
     font: inherit;
-    font-size: 0.78rem;
+    font-size: 0.92rem;
     scroll-snap-align: start;
     font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
   }
 
-  .ss-chip::before {
-    content: "";
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--chip-color);
-    opacity: 0.45;
+  .ss-chip-icon {
+    flex: none;
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: var(--chip-color);
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.6;
   }
 
   .ss-chip-rainy_days {
-    --chip-color: var(--accent-teal);
+    --chip-color: #17a88a;
   }
 
   .ss-chip-dry_spell_days {
@@ -1933,7 +2194,7 @@
     color: var(--ink);
   }
 
-  .ss-chip[aria-checked="true"]::before {
+  .ss-chip[aria-checked="true"] .ss-chip-icon {
     opacity: 1;
   }
 
@@ -1949,10 +2210,10 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 42px;
+    height: 42px;
     border: 0;
-    border-radius: 12px;
+    border-radius: 14px;
     background: var(--map-panel-surface-strong);
     box-shadow: var(--map-card-shadow);
     color: var(--ink);
@@ -1981,48 +2242,55 @@
 
   .ss-option-row {
     display: grid;
-    grid-template-columns: 56px minmax(0, 1fr);
+    grid-template-columns: 74px minmax(0, 1fr);
     align-items: center;
     gap: 8px;
   }
 
   .ss-option-label {
     color: var(--muted);
-    font-size: 0.72rem;
+    font-size: 0.86rem;
     font-weight: 700;
   }
 
   .ss-mini-segmented {
     display: flex;
-    gap: 2px;
-    padding: 3px;
-    border-radius: 12px;
-    box-shadow: var(--map-inset-shadow);
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: var(--map-panel-surface-soft);
+    box-shadow: var(--neo-inset-soft);
   }
 
   .ss-mini-segmented button {
     flex: 1;
-    min-height: 32px;
+    min-height: 40px;
     border: 0;
-    border-radius: 9px;
+    border-radius: 999px;
     background: transparent;
     color: var(--muted);
     font: inherit;
-    font-size: 0.78rem;
+    font-size: 0.94rem;
     font-weight: 700;
     cursor: pointer;
   }
 
   .ss-mini-segmented button[aria-checked="true"] {
     background: var(--map-panel-surface-strong);
-    box-shadow: var(--map-card-shadow);
+    box-shadow: var(--neo-raised-tight);
     color: var(--ink);
+  }
+
+  .ss-run.ss-run-inline span {
+    min-height: 34px;
+    padding: 0 14px;
+    font-size: 0.9rem;
   }
 
   .ss-option-note {
     margin: 0;
     color: var(--muted);
-    font-size: 0.74rem;
+    font-size: 0.9rem;
     line-height: 1.4;
   }
 }
@@ -2073,6 +2341,17 @@
 
   .view-subseasonal.ss-drawer-open .floating-legend.floating-legend-subseasonal {
     left: var(--ss-gutter);
+  }
+
+  /* Too narrow for the panel and the dock side by side: the dock runs the full width along the
+     bottom and the panel stops above it, scrolling if the window is short. */
+  .view-subseasonal .floating-legend.floating-legend-subseasonal {
+    left: var(--ss-gutter);
+    max-width: none;
+  }
+
+  .view-subseasonal .floating-controls {
+    max-height: calc(100dvh - var(--ss-dock-clearance) - 3 * clamp(16px, 1.8vw, 24px));
   }
 }
 

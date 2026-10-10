@@ -1334,6 +1334,104 @@
   }
 }
 
+/* Phone sheet (iOS / Apple Weather style): the drawer rises from the bottom as a card with rounded
+   top corners and a grabber, leaving the dimmed map visible above it. Drag the header down or tap
+   the map to close. Desktop keeps the side card. */
+.ss-sheet-grabber,
+.ss-sheet-backdrop {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .ss-sheet-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 765;
+    background: rgba(15, 22, 30, 0.34);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms ease;
+  }
+
+  .ss-sheet-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .drawer.ss-drawer {
+    top: calc(max(10px, env(safe-area-inset-top)) + 48px);
+    z-index: 770;
+    border: 0;
+    border-radius: 32px 32px 0 0;
+    box-shadow: 0 -10px 30px rgba(15, 22, 30, 0.22);
+    transform: translateY(calc(100% + 24px));
+    transition: transform 420ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .drawer.ss-drawer.open {
+    transform: translateY(var(--ss-sheet-drag, 0px));
+  }
+
+  .drawer.ss-drawer.dragging {
+    transition: none;
+  }
+
+  .ss-sheet-grabber {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    z-index: 2;
+    width: 96px;
+    height: 22px;
+    margin-left: -48px;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .ss-sheet-grabber::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    left: 30px;
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(60, 72, 84, 0.32);
+  }
+
+  /* The title is centred, as in an iOS sheet; the close button stays top-right. */
+  .drawer.ss-drawer .drawer-header {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 24px 56px 14px;
+    text-align: center;
+    touch-action: none;
+  }
+
+  .drawer.ss-drawer .drawer-header > div {
+    align-items: center;
+  }
+
+  .drawer.ss-drawer .drawer-header > button {
+    position: absolute;
+    top: 16px;
+    right: 14px;
+  }
+
+  .drawer.ss-drawer .ss-drawer-chips {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 860px) and (prefers-reduced-motion: reduce) {
+  .drawer.ss-drawer,
+  .ss-sheet-backdrop {
+    transition: none;
+  }
+}
+
 /* Phones: wider cards and charts in the drawer by trimming the stacked side padding (drawer edge,
    card, chart) and the scrollbar gutter, which phones do not draw. */
 @media (max-width: 520px) {
@@ -1757,7 +1855,26 @@
 }
 
 .ss-drawer .drawer-header h2 {
-  margin-top: 14px;
+  margin-top: 6px;
+}
+
+/* The area type ("Region", "District · Ashanti Region") sits above the name, as a small label. */
+.ss-drawer .drawer-header > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.ss-drawer .drawer-header .ss-drawer-chips {
+  order: 1;
+}
+
+.ss-drawer .drawer-header h2 {
+  order: 2;
+}
+
+.ss-drawer .drawer-header > div > p {
+  order: 3;
 }
 
 /* Larger type for farmers: the shared drawer headings and buttons, in this drawer only. */
@@ -1782,6 +1899,13 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 12px;
+}
+
+/* On phones the layer label is hidden, so the area label leads the header. */
+@media (max-width: 1279px) {
+  .ss-drawer-chips {
+    margin-top: 0;
+  }
 }
 
 .ss-drawer-chips span {
@@ -1863,7 +1987,7 @@
   padding: 18px 20px;
   border: 1px solid rgba(255, 255, 255, 0.56);
   border-radius: 24px;
-  background: linear-gradient(135deg, var(--ss-tone-soft), transparent 70%), var(--map-panel-surface-strong);
+  background: var(--map-panel-surface-strong);
   box-shadow: var(--map-card-shadow);
 }
 
@@ -2282,18 +2406,18 @@
     gap: 4px;
     margin: 12px 16px 0;
     padding: 4px;
-    border-radius: 16px;
+    border-radius: 999px;
     box-shadow: var(--map-inset-shadow);
   }
 
   /* Five tabs share a phone's width: one line each, sized so "Dry spells" and "Rain days" fit, and
-     the chosen tab sits evenly inside the track (12px corners inside the track's 16px, 4px apart). */
+     the chosen tab is a pill inside the pill-shaped track, 4px apart. */
   .ss-drawer-tab {
     min-width: 0;
     min-height: 38px;
     padding: 0 2px;
     border: 0;
-    border-radius: 12px;
+    border-radius: 999px;
     background: transparent;
     color: var(--muted);
     font: inherit;
@@ -2307,6 +2431,7 @@
   }
 
   .ss-drawer-tab[aria-pressed="true"] {
+    border-radius: 999px;
     background: var(--map-panel-surface-strong);
     box-shadow: 0 1px 4px rgba(48, 63, 78, 0.16);
     color: var(--ink);
@@ -2396,7 +2521,7 @@
     min-width: 0;
     overflow: hidden;
     color: var(--muted);
-    font-size: 0.84rem;
+    font-size: 0.72rem;
     font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2409,8 +2534,8 @@
   .ss-topbar-run.stale::before {
     content: "";
     display: inline-block;
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     margin-right: 6px;
     border-radius: 50%;
     background: var(--accent-amber);

@@ -256,10 +256,26 @@ test("clicking a region opens the 46-day drawer with chart, spells, weeks and ex
   // The drawer only shows the selected layer: rainfall by default.
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("Rainfall ·");
   await expect(page.getByTestId("subseasonal-chart")).toBeVisible();
-  await expect(page.getByTestId("subseasonal-weeks")).toContainText("Week 1");
   await expect(page.getByTestId("subseasonal-calendar")).toHaveCount(0);
+  // Rainfall follows the map's period: the day's rain by day, the week's total and table by week.
+  await expect(page.getByTestId("subseasonal-weeks")).toHaveCount(0);
+  await page.getByTestId("ss-agg-weekly").click();
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Week ");
+  await expect(page.getByTestId("subseasonal-weeks")).toContainText("Week 1");
+  await expect(page.getByTestId("subseasonal-chart")).toHaveCount(0);
+  await expect(page.getByTestId("subseasonal-weekly-chart")).toBeVisible();
+  await page.getByTestId("ss-agg-total").click();
+  await expect(page.getByTestId("subseasonal-chart")).toBeVisible();
+  await expect(page.getByTestId("subseasonal-weeks")).toBeVisible();
+  await page.getByTestId("ss-agg-daily").click();
   await expect(page.getByTestId("subseasonal-advisory")).toContainText("What to do");
-  await expect(page.getByTestId("subseasonal-guidance")).toContainText("deterministic");
+  // Laid out like an agromet bulletin: validity, outlook, impact, then grouped advice.
+  await expect(page.getByTestId("subseasonal-advisory-validity")).toContainText("Valid");
+  await expect(page.getByTestId("subseasonal-advisory-outlook")).toContainText("mm of rain");
+  await expect(page.getByTestId("subseasonal-advisory-impact")).not.toBeEmpty();
+  await expect(page.getByTestId("subseasonal-advisory-crops")).toBeVisible();
+  // The model's caveat paragraph is not shown in the drawer.
+  await expect(page.getByTestId("subseasonal-guidance")).toHaveCount(0);
   expect(requests.some((url) => url.pathname === "/subseasonal/area" && url.searchParams.get("level") === "region")).toBe(true);
   await expect(page).toHaveURL(/area=region/);
 
@@ -269,13 +285,18 @@ test("clicking a region opens the 46-day drawer with chart, spells, weeks and ex
   // Switching layer swaps the drawer to that layer's content and advice.
   const rainHeadline = await page.getByTestId("subseasonal-advisory-headline").textContent();
   await page.getByTestId("ss-layer-dry_spell_days").click();
-  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Dry-spell days");
-  await expect(page.getByTestId("subseasonal-chart")).toHaveCount(0);
-  await expect(page.getByTestId("subseasonal-weeks")).toHaveCount(0);
-  await expect(page.getByTestId("subseasonal-calendar").locator("button")).toHaveCount(46);
+  // Answer first (a spell on now, or the next one), then the spell chart and the spell list.
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("dry spell");
+  // The whole run shows both the day chart and the week chart.
+  await expect(page.getByTestId("subseasonal-chart")).toContainText("dry spells");
+  await expect(page.getByTestId("subseasonal-weekly-chart")).toContainText("dry spells per week");
+  await expect(page.getByTestId("subseasonal-spells")).toBeVisible();
   await expect(page.getByTestId("subseasonal-advisory-headline")).not.toHaveText(rainHeadline ?? "");
 
-  // A calendar day jumps the map (and the drawer) back to that day's rainfall.
+  // The day-by-day calendar is folded away; a day in it jumps the map back to that day's rainfall.
+  await expect(page.getByTestId("subseasonal-calendar")).toBeHidden();
+  await page.getByTestId("subseasonal-calendar-fold").locator("summary").click();
+  await expect(page.getByTestId("subseasonal-calendar").locator("button")).toHaveCount(46);
   await page.getByTestId("subseasonal-calendar").locator("button").nth(4).click();
   await expect(page.getByTestId("timeline-current")).toHaveText("Tue 29 Sep");
   await expect(page.getByTestId("drawer-summary-strip")).toContainText("Rainfall ·");
@@ -411,7 +432,7 @@ test("on phones the drawer switches layers in place", async ({ page }) => {
   await expect(page.getByTestId("subseasonal-advisory")).toBeVisible();
   await page.getByTestId("drawer-layer-dry_spell_days").click();
   await expect(page.getByTestId("drawer-layer-dry_spell_days")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Dry-spell days");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("dry spell");
   await expect(page).toHaveURL(/layer=dry_spell_days/);
   await expect(page.getByTestId("dashboard-drawer")).toHaveClass(/open/);
 });

@@ -2492,6 +2492,11 @@
     font-size: 0.8rem;
   }
 
+  /* The period ("46 days (25 Sep–9 Nov)") is already in the top bar and the options: no title here. */
+  .view-subseasonal .ss-dock-title {
+    display: none;
+  }
+
   /* Phones: zoom buttons sit on the right, just under the top bar. */
   .view-subseasonal .map-zoom {
     top: calc(max(10px, env(safe-area-inset-top)) + 64px);

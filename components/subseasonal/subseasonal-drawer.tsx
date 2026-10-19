@@ -1,12 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { AdvisoryPanel } from "@/components/subseasonal/advisory-panel";
-import { RainChart, WeeklyChart, WeeklyRainChart } from "@/components/subseasonal/rain-chart";
+import { DataInfo } from "@/components/subseasonal/data-info";
+import { StatControls } from "@/components/subseasonal/stat-controls";
+import { DailyChanceChart, RainChart, WeeklyChart, WeeklyRainChart } from "@/components/subseasonal/rain-chart";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
-import { availableLayers, downloadText, formatAmount, formatDay, formatRange, LAYER_SHORT_LABELS, layerLabel, seriesToCsv, spellOutlook, spellStatus, todayIso } from "@/lib/subseasonal";
-import type { SpellKind, SpellStatus, SubseasonalAggregation, SubseasonalLayerKey, SubseasonalSeries } from "@/lib/subseasonal";
+import {
+  availableLayers,
+  downloadText,
+  formatAmount,
+  formatDay,
+  formatRange,
+  isEnsemble,
+  LAYER_SHORT_LABELS,
+  layerLabel,
+  medianOf,
+  membersAtLeast,
+  seriesToCsv,
+  spellOutlook,
+  spellStatus,
+  todayIso,
+  chanceBasis,
+  dayChance,
+  extremeChanceByDate,
+  totalChance,
+  totalChanceByDate,
+  weekChance,
+  weeklyExtremeChance,
+} from "@/lib/subseasonal";
+import type { SpellKind, SpellStatus, StatView, SubseasonalAggregation, SubseasonalLayerKey, SubseasonalSeries } from "@/lib/subseasonal";
 import { buildSubseasonalAdvisory, isCropKey } from "@/lib/subseasonal-advisory";
 import type { CropKey } from "@/lib/subseasonal-advisory";
 
@@ -69,6 +94,58 @@ type Hero = { label: string; value: string; unit: string; context: string; whole
  * today, so the number agrees with the forward-looking advice; the whole-run figure (what the
  * map shows) stays alongside it.
  */
+/**
+ * Ensemble rainfall headline for the median or chance view, for the map's day, week or whole run;
+ * null for the mean (the usual rainfall headline already shows it).
+ */
+function statHero(series: SubseasonalSeries, period: { aggregation: SubseasonalAggregation; index: number }, view: StatView | null): Hero | null {
+  if (!view || view.stat === "mean" || !isEnsemble(series)) {
+    return null;
+  }
+  const amount = view.threshold ?? 0;
+  let members: (number | null)[] | null | undefined;
+  let when: string;
+  let mean: number | null;
+  let chance: number | null;
+  if (period.aggregation === "daily") {
+    const day = series.days[period.index - 1];
+    if (!day) return null;
+    members = day.members;
+    when = formatDay(day.date, "weekday");
+    mean = day.value;
+    chance = dayChance(series, day, amount);
+  } else if (period.aggregation === "weekly") {
+    const week = series.weeks.find((item) => item.week === period.index);
+    if (!week) return null;
+    members = week.members;
+    when = `${week.partial ? `Days ${week.start_day}–${week.end_day}` : `Week ${week.week}`} (${formatRange(week.start_date, week.end_date)})`;
+    mean = week.value;
+    chance = weekChance(week, amount);
+  } else {
+    members = series.member_totals;
+    when = `${series.days.length} days`;
+    mean = series.metrics.total_mm;
+    chance = totalChance(series, amount);
+  }
+  if (view.stat === "median") {
+    const median = medianOf(members);
+    return {
+      label: `Rainfall (median) · ${when}`,
+      value: formatAmount(median, "mm").replace(/ mm$/, ""),
+      unit: "mm",
+      context: `Half of the ${series.members} members get more, half less`,
+      whole: `Ensemble mean ${formatAmount(mean, "mm")}`,
+    };
+  }
+  return {
+    label: `Chance of ${amount} mm or more · ${when}`,
+    value: String(Math.round(chance ?? 0)),
+    unit: "%",
+    context: series.kind === "point" ? `${membersAtLeast(members, amount)} members reach ${amount} mm` : `Average over the area's ${series.cell_count} grid cells, as on the map`,
+    whole: `Median ${formatAmount(medianOf(members), "mm")} · mean ${formatAmount(mean, "mm")}`,
+  };
+}
+
 /** Rainfall for the shown day or week, so the headline matches the map's period. */
 function rainPeriodHero(series: SubseasonalSeries, period: { aggregation: SubseasonalAggregation; index: number }): Hero | null {
   if (period.aggregation === "daily") {
@@ -123,6 +200,9 @@ function indicatorPeriodHero(
   series: SubseasonalSeries,
   period: { aggregation: SubseasonalAggregation; index: number },
 ): Hero | null {
+  if (layer === "extreme_rain") {
+    return extremePeriodHero(series, period);
+  }
   if (layer !== "dry_spell_days" && layer !== "wet_spell_days" && layer !== "rainy_days") {
     return null;
   }
@@ -135,6 +215,17 @@ function indicatorPeriodHero(
       return null;
     }
     const when = formatDay(day.date, "weekday");
+    if (isEnsemble(series)) {
+      // An ensemble answers "how likely", not yes or no.
+      const chance = kind ? day.spell_prob?.[kind] : day.wet_prob;
+      return {
+        label: kind ? `Chance of being in a ${name} on ${when}` : `Chance of a rain day on ${when}`,
+        value: String(Math.round(chance ?? 0)),
+        unit: "%",
+        context: `${chance === null || chance === undefined ? "–" : Math.round(((chance ?? 0) / 100) * (series.members ?? 1))} of ${series.members} members · mean ${formatAmount(day.value, "mm")}`,
+        whole: `Day ${day.day} of ${series.days.length}`,
+      };
+    }
     if (!kind) {
       return {
         label: `Rain day on ${when}?`,
@@ -188,6 +279,82 @@ function indicatorPeriodHero(
   return null;
 }
 
+/** Extreme rain for the shown day or week: the chance (ensemble) or whether the run forecasts it. */
+function extremePeriodHero(series: SubseasonalSeries, period: { aggregation: SubseasonalAggregation; index: number }): Hero | null {
+  const threshold = series.thresholds.extreme_rain_mm ?? 50;
+  const ensemble = isEnsemble(series);
+  if (period.aggregation === "daily") {
+    const day = series.days[period.index - 1];
+    if (!day) {
+      return null;
+    }
+    const when = formatDay(day.date, "weekday");
+    if (ensemble) {
+      return {
+        label: `Chance of ${threshold} mm+ on ${when}`,
+        value: String(Math.round(day.extreme_prob ?? 0)),
+        unit: "%",
+        context: `Wettest member ${formatAmount(day.spread?.max, "mm")} · mean ${formatAmount(day.value, "mm")}`,
+        whole: `Day ${day.day} of ${series.days.length}`,
+      };
+    }
+    return {
+      label: `${threshold} mm+ on ${when}?`,
+      value: (day.value ?? 0) >= threshold ? "Yes" : "No",
+      unit: "",
+      context: `${formatAmount(day.value, "mm")} forecast`,
+      whole: `Day ${day.day} of ${series.days.length}`,
+    };
+  }
+  if (period.aggregation === "weekly") {
+    const week = series.weeks.find((item) => item.week === period.index);
+    if (!week) {
+      return null;
+    }
+    const days = series.days.filter((day) => day.day >= week.start_day && day.day <= week.end_day);
+    const peak = days.reduce<SubseasonalSeries["days"][number] | null>(
+      (best, day) => ((day.extreme_prob ?? 0) > (best?.extreme_prob ?? 0) ? day : best),
+      null,
+    );
+    const weekName = `${week.partial ? `Days ${week.start_day}–${week.end_day}` : `Week ${week.week}`} (${formatRange(week.start_date, week.end_date)})`;
+    const weekValue = weeklyExtremeChance(series, threshold)[week.week - 1] ?? 0;
+    return {
+      label: `Chance of a ${threshold} mm+ day · ${weekName}`,
+      value: String(Math.round(weekValue)),
+      unit: "%",
+      context:
+        peak && (peak.extreme_prob ?? 0) > 0
+          ? `Most likely ${formatDay(peak.date, "weekday")} (${Math.round(peak.extreme_prob ?? 0)}% that day)`
+          : `No day of ${threshold} mm or more this week`,
+      whole: ensemble || series.kind !== "point" ? sentenceCase(chanceBasis(series)) : null,
+    };
+  }
+  // Whole run: the figure the map and the chart show (a 50 mm+ day anywhere in the run), with
+  // what is still ahead of today as context.
+  const byDate = extremeChanceByDate(series, threshold);
+  const wholeRun = byDate[byDate.length - 1] ?? 0;
+  const peak = series.days.reduce<SubseasonalSeries["days"][number] | null>(
+    (best, day) => ((day.extreme_prob ?? 0) > (best?.extreme_prob ?? 0) ? day : best),
+    null,
+  );
+  const today = todayIso();
+  const ahead = series.days.filter((day) => day.date >= today && (day.extreme_prob ?? 0) > 0);
+  return {
+    label: `Chance of a ${threshold} mm+ day · ${series.days.length} days`,
+    value: String(Math.round(wholeRun)),
+    unit: "%",
+    context:
+      peak && (peak.extreme_prob ?? 0) > 0
+        ? `Most likely ${formatDay(peak.date, "weekday")}${ensemble ? ` (${Math.round(peak.extreme_prob ?? 0)}% that day)` : ""}`
+        : `No day of ${threshold} mm or more ${ensemble ? "in any member" : "in this run"}`,
+    whole: ahead.length
+      ? `Still ahead: ${ahead.length} day${ahead.length === 1 ? "" : "s"} with some chance, from ${formatDay(ahead[0].date, "weekday")}`
+      : peak && (peak.extreme_prob ?? 0) > 0
+        ? "None of it is still ahead of today"
+        : null,
+  };
+}
+
 function heroFor(layer: SubseasonalLayerKey, series: SubseasonalSeries, today: string, shownDay: number | null = null): Hero {
   const all = series.days;
   const upcoming = all.filter((day) => day.date >= today);
@@ -208,6 +375,47 @@ function heroFor(layer: SubseasonalLayerKey, series: SubseasonalSeries, today: s
       context: next ? counts : `No day with ${thresholds.wet_day_mm} mm or more ahead in this forecast`,
       whole: partial ? `Whole run ${metrics.rainy_days} / ${all.length} days` : null,
     };
+  }
+  if (layer === "extreme_rain") {
+    // Answer first: the riskiest day ahead and how likely it is.
+    const threshold = thresholds.extreme_rain_mm ?? 50;
+    const ahead = all.filter((day) => day.date >= today);
+    const peak = (ahead.length ? ahead : all).reduce<SubseasonalSeries["days"][number] | null>(
+      (best, day) => ((day.extreme_prob ?? 0) > (best?.extreme_prob ?? 0) ? day : best),
+      null,
+    );
+    const risky = (ahead.length ? ahead : all).filter((day) => (day.extreme_prob ?? 0) >= 10).length;
+    if (!peak || (peak.extreme_prob ?? 0) <= 0) {
+      // Nothing ahead; still say so if the run had a flood-level day before today.
+      const earlier = all
+        .filter((day) => day.date < today)
+        .reduce<SubseasonalSeries["days"][number] | null>((best, day) => ((day.extreme_prob ?? 0) > (best?.extreme_prob ?? 0) ? day : best), null);
+      return {
+        label: `Extreme rain · ${span}`,
+        value: "None",
+        unit: "",
+        context: `No day of ${threshold} mm or more ahead ${isEnsemble(series) ? "in any member" : "in this forecast"}`,
+        whole:
+          earlier && (earlier.extreme_prob ?? 0) > 0
+            ? `Earlier in this run: ${isEnsemble(series) ? `${Math.round(earlier.extreme_prob ?? 0)}% chance` : formatAmount(earlier.value, "mm")} on ${formatDay(earlier.date, "weekday")}`
+            : null,
+      };
+    }
+    return isEnsemble(series)
+      ? {
+          label: `Highest chance of ${threshold} mm+ in a day`,
+          value: String(Math.round(peak.extreme_prob ?? 0)),
+          unit: `% · ${formatDay(peak.date, "weekday")}`,
+          context: `${risky} day${risky === 1 ? "" : "s"} with a 10% chance or more`,
+          whole: `Whole run: ${formatAmount(metrics.extreme_days, "days")} of ${threshold} mm+ per member on average`,
+        }
+      : {
+          label: `Next ${threshold} mm+ day`,
+          value: formatDay(peak.date, "weekday"),
+          unit: `· ${formatAmount(peak.value, "mm")}`,
+          context: `${formatAmount(metrics.extreme_days, "days")} of ${threshold} mm or more in this run`,
+          whole: null,
+        };
   }
   if (layer === "onset") {
     // One date for the whole run, so it is not re-counted from today like the totals.
@@ -234,12 +442,19 @@ function heroFor(layer: SubseasonalLayerKey, series: SubseasonalSeries, today: s
             ? `On ${formatDay(shown.date, "weekday")}, the day shown`
             : `Set in ${-gap} day${gap === -1 ? "" : "s"} before ${formatDay(shown.date, "weekday")}`
         : null;
-    const notes = [status, onset.provisional ? `Provisional: dry-spell check covers ${onset.guard_days} of ${thresholds.onset_guard_days ?? 30} days` : null];
+    const notes = [
+      status,
+      onset.probability !== null && onset.probability !== undefined ? `${Math.round(onset.probability)}% of members have an onset` : null,
+      onset.provisional ? `Provisional: dry-spell check covers ${onset.guard_days} of ${thresholds.onset_guard_days ?? 30} days` : null,
+    ];
     return {
       label: `Onset · day ${onset.day} of the forecast`,
       value: formatDay(onset.date, "weekday"),
       unit: onset.date < today ? "(passed)" : "",
-      context: `${formatAmount(onset.rain_mm, "mm")} within ${windowDays} days · longest dry run after: ${formatAmount(onset.longest_dry_after, "days")}`,
+      context:
+        onset.longest_dry_after === null
+          ? `Median of the members' onset days · ${formatAmount(onset.rain_mm, "mm")} within ${windowDays} days (median)`
+          : `${formatAmount(onset.rain_mm, "mm")} within ${windowDays} days · longest dry run after: ${formatAmount(onset.longest_dry_after, "days")}`,
       whole: notes.filter(Boolean).join(" · ") || null,
     };
   }
@@ -399,35 +614,51 @@ function SpellList({ series, kind }: { series: SubseasonalSeries; kind: SpellKin
                 </strong>
                 {formatAmount(spell.total_mm, "mm")}
               </span>
+              {spell.probability !== null && spell.probability !== undefined ? (
+                <span className="ss-spell-chance" title="Share of ensemble members with a spell over these days">
+                  {Math.round(spell.probability)}%
+                </span>
+              ) : null}
             </li>
           );
         })}
       </ul>
+      {isEnsemble(series) ? (
+        <p className="ss-spell-note">
+          Spells: days at least half the members agree on. %: members with a spell then.
+        </p>
+      ) : null}
       {runsOn || runsIn ? (
         <p className="ss-spell-note">
-          {runsIn ? `← started before ${formatDay(series.days[0]?.date ?? "", "short")}, the first forecast day. ` : ""}
-          {runsOn && last ? `→ continues past ${formatDay(last.date, "short")}, the end of this forecast.` : ""}
+          {runsIn ? `← began before ${formatDay(series.days[0]?.date ?? "", "short")}. ` : ""}
+          {runsOn && last ? `→ runs past ${formatDay(last.date, "short")}.` : ""}
         </p>
       ) : null}
     </>
   );
 }
 
-function Section({ kicker, title, children }: { kicker: string; title: string; children: React.ReactNode }) {
+/** One drawer card: a short title, then its chart or list. */
+/** One drawer card. Chart cards leave the title to each chart; list cards have a heading. */
+function Section({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <section className="drawer-section ss-card">
-      <div className="section-heading">
-        <div>
-          <span className="section-kicker">{kicker}</span>
+      {title ? (
+        <div className="section-heading ss-section-heading">
           <h3>{title}</h3>
         </div>
-      </div>
+      ) : null}
       {children}
     </section>
   );
 }
 
-function LayerSections({
+/**
+ * The selected layer's sections, most important first. The drawer shows the first one straight under
+ * the headline (so a change of layer, period or statistic is visible without scrolling) and the
+ * rest after the advice.
+ */
+function layerSections({
   layer,
   series,
   aggregation,
@@ -435,7 +666,10 @@ function LayerSections({
   currentWeek,
   onSeekDay,
   onSelectWeek,
+  view = null,
 }: {
+  /** Ensemble rainfall: the statistic chosen for the map (mean, median or chance). */
+  view?: StatView | null;
   layer: SubseasonalLayerKey;
   series: SubseasonalSeries;
   aggregation: SubseasonalAggregation;
@@ -443,23 +677,30 @@ function LayerSections({
   currentWeek: number | null;
   onSeekDay: (day: number) => void;
   onSelectWeek: (week: number) => void;
-}) {
+}): { charts: ReactNode[]; details: ReactNode[] } {
   if (layer === "rainy_days" || layer === "dry_spell_days" || layer === "wet_spell_days") {
     // One rule for the day-count layers: the day chart when daily, the week chart when weekly, both
     // for the whole run; then the spell list (spells), and the day-by-day calendar folded last.
     const kind: SpellKind | null = layer === "dry_spell_days" ? "dry" : layer === "wet_spell_days" ? "wet" : null;
     const wetDay = series.thresholds.wet_day_mm;
-    const kicker = kind === "dry" ? "Dry spells" : kind === "wet" ? "Wet spells" : "Rain days";
     const daySection = (
-      <Section
-        kicker={kicker}
-        title={kind === "dry" ? "Rain and dry spells by day" : kind === "wet" ? "Rain and wet spells by day" : "Rain by day"}
-      >
+      <Section>
         <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} bands={kind ?? "none"} />
+        {isEnsemble(series) ? (
+          <DailyChanceChart
+            series={series}
+            values={series.days.map((day) => (kind ? day.spell_prob?.[kind] : day.wet_prob))}
+            currentDay={currentDay}
+            onSelectDay={onSeekDay}
+            title={kind ? `Chance of a ${kind} spell (%)` : "Chance of a rain day (%)"}
+            legend={sentenceCase(chanceBasis(series))}
+            tone={kind ?? "rainy"}
+          />
+        ) : null}
       </Section>
     );
     const weekSection = (
-      <Section kicker={kicker} title={kind === "dry" ? "Dry-spell days by week" : kind === "wet" ? "Wet-spell days by week" : "Rain days by week"}>
+      <Section>
         <WeeklyChart
           series={series}
           values={weeklyDayCounts(series, (day) => (kind ? day.spell === kind : Boolean(day.wet)))}
@@ -467,9 +708,7 @@ function LayerSections({
           onSelectWeek={aggregation === "weekly" ? onSelectWeek : undefined}
           title={kind === "dry" ? "Days in dry spells per week" : kind === "wet" ? "Days in wet spells per week" : "Rain days per week"}
           yLabel="Days"
-          legend={
-            kind === "dry" ? "Dry-spell days in the week" : kind === "wet" ? "Wet-spell days in the week" : `Rain days in the week (${wetDay} mm or more)`
-          }
+          legend={kind === "dry" ? "Dry-spell days" : kind === "wet" ? "Wet-spell days" : `Days ≥${wetDay} mm`}
           unit="days"
           tone={kind ?? "rainy"}
           maxValue={7}
@@ -483,55 +722,194 @@ function LayerSections({
       </details>
     );
     const minDays = kind === "dry" ? series.thresholds.dry_spell_min_days : series.thresholds.wet_spell_min_days;
-    return (
-      <>
-        {aggregation === "weekly" ? null : daySection}
-        {aggregation === "daily" ? null : weekSection}
-        {kind ? (
-          <Section kicker={kicker} title={`Runs of ${minDays}+ ${kind} days`}>
+    return {
+      charts: [
+        aggregation === "weekly" ? null : <Fragment key="day">{daySection}</Fragment>,
+        aggregation === "daily" ? null : <Fragment key="week">{weekSection}</Fragment>,
+      ].filter(Boolean),
+      details: [
+        kind ? (
+          <Section key="runs" title={`${kind === "dry" ? "Dry" : "Wet"} spells (${minDays}+ days)`}>
             <SpellList series={series} kind={kind} />
             {calendar}
           </Section>
         ) : (
-          <Section kicker={kicker} title={`Days with ${wetDay} mm or more`}>
-            {calendar}
-          </Section>
-        )}
-      </>
+          <Fragment key="calendar">{calendar}</Fragment>
+        ),
+      ],
+    };
+  }
+  if (layer === "extreme_rain") {
+    // Follows the map's period like every other layer: days, weeks, or the whole run by date.
+    const threshold = series.thresholds.extreme_rain_mm ?? 50;
+    const ensemble = isEnsemble(series);
+    const share =
+      ensemble || series.kind !== "point" ? sentenceCase(chanceBasis(series)) : "Single run: 100% where it forecasts it";
+    const weekly = weeklyExtremeChance(series, threshold);
+    const weekChart = (
+      <WeeklyChart
+        series={series}
+        values={weekly}
+        currentWeek={currentWeek}
+        onSelectWeek={aggregation === "weekly" ? onSelectWeek : undefined}
+        title={`Chance of a ${threshold} mm+ day, per week (%)`}
+        yLabel="Chance (%)"
+        legend={share}
+        unit="%"
+        tone="extreme"
+        maxValue={100}
+      />
     );
+    if (aggregation === "weekly") {
+      return {
+        charts: [
+          <Section key="extreme-week">
+            {weekChart}
+          </Section>,
+          <Section key="rain-week">
+            <WeeklyRainChart series={series} currentWeek={currentWeek} onSelectWeek={onSelectWeek} />
+          </Section>,
+        ],
+        details: [],
+      };
+    }
+    if (aggregation === "total") {
+      return {
+        charts: [
+        <Section key="extreme-total">
+          <DailyChanceChart
+            series={series}
+            values={extremeChanceByDate(series, threshold)}
+            cumulative
+            currentDay={currentDay}
+            onSelectDay={onSeekDay}
+            title={`Chance of a ${threshold} mm+ day so far (%)`}
+            legend={share}
+            tone="extreme"
+          />
+        </Section>,
+        <Section key="extreme-week">
+          {weekChart}
+        </Section>,
+        ],
+        details: [],
+      };
+    }
+    return {
+      charts: [
+      <Section key="extreme">
+        <DailyChanceChart
+          series={series}
+          values={series.days.map((day) => day.extreme_prob)}
+          currentDay={currentDay}
+          onSelectDay={onSeekDay}
+          title={`Chance of ${threshold} mm+ in a day (%)`}
+          legend={share}
+          tone="extreme"
+        />
+      </Section>,
+      <Section key="rain">
+        <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} bands="none" extremeMm={threshold} />
+      </Section>,
+      ],
+      details: [],
+    };
   }
   if (layer === "onset") {
     const { thresholds } = series;
-    return (
-      <Section kicker="Onset" title="Rain by day, onset marked">
+    return {
+      charts: [
+      <Section key="onset">
         <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} onset={series.onset ?? null} />
         <p className="ss-onset-rule" data-testid="subseasonal-onset-rule">
-          Onset is the first rain day from which at least {thresholds.onset_mm ?? 20} mm falls within {thresholds.onset_window_days ?? 3} days,
-          with no dry spell longer than {thresholds.onset_max_dry_days ?? 10} days in the {thresholds.onset_guard_days ?? 30} days after. Only this
-          forecast is searched: rain before {formatDay(series.days[0]?.date ?? "", "short")} is not counted.
+          Onset: the first rain day after which {thresholds.onset_mm ?? 20} mm falls within {thresholds.onset_window_days ?? 3} days, with no dry
+          spell over {thresholds.onset_max_dry_days ?? 10} days in the next {thresholds.onset_guard_days ?? 30}. Forecast days only.
         </p>
+      </Section>,
+      ],
+      details: [],
+    };
+  }
+  // Rainfall follows the map's period (days when daily, weeks when weekly, both for the whole run)
+  // and, for an ensemble, the map's statistic: the charts centre on the mean or median, and the
+  // chance view leads with the probability of reaching the chosen amount.
+  const centre = view?.stat === "median" ? "median" : "mean";
+  const amount = view?.stat === "chance" ? (view.threshold ?? 0) : null;
+  const chanceSection =
+    amount === null || !isEnsemble(series) ? null : aggregation === "weekly" ? (
+      <Section key="chance">
+        <WeeklyChart
+          key={`chance-${amount}`}
+          series={series}
+          values={series.weeks.map((week) => weekChance(week, amount))}
+          currentWeek={currentWeek}
+          onSelectWeek={onSelectWeek}
+          title={`Chance of ${amount} mm+ in a week (%)`}
+          yLabel="Chance (%)"
+          legend={sentenceCase(chanceBasis(series))}
+          unit="%"
+          tone="rain"
+          maxValue={100}
+        />
+      </Section>
+    ) : (
+      <Section key="chance">
+        <DailyChanceChart
+          key={`chance-${aggregation}-${amount}`}
+          series={series}
+          values={aggregation === "daily" ? series.days.map((day) => dayChance(series, day, amount)) : totalChanceByDate(series, amount)}
+          cumulative={aggregation !== "daily"}
+          currentDay={currentDay}
+          onSelectDay={onSeekDay}
+          title={aggregation === "daily" ? `Chance of ${amount} mm+ in a day (%)` : `Chance of ${amount} mm+ in total, so far (%)`}
+          legend={sentenceCase(chanceBasis(series))}
+          tone="rainy"
+        />
       </Section>
     );
-  }
-  // Rainfall follows the map's period: days when daily, weeks when weekly, both for the whole run.
-  return (
-    <>
-      {aggregation === "weekly" ? null : (
-        <Section kicker="Daily rainfall" title="Rain by day">
-          <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} />
-        </Section>
-      )}
-      {aggregation === "daily" ? null : (
-        <Section kicker="Weekly totals" title="Rainfall by week">
-          <WeeklyRainChart
-            series={series}
-            currentWeek={currentWeek}
-            onSelectWeek={aggregation === "weekly" ? onSelectWeek : undefined}
-          />
-        </Section>
-      )}
-    </>
-  );
+  // In the Chance view the amount being counted is drawn across the member boxes of the matching
+  // period (daily amounts on the day chart, weekly amounts on the week chart), so the boxes show
+  // which members reach it. Whole-run amounts have no matching day or week chart, so none is drawn.
+  const dayLine = amount !== null && aggregation === "daily" ? amount : undefined;
+  const weekLine = amount !== null && aggregation === "weekly" ? amount : undefined;
+  const lineWords = (mm: number) => `${mm} mm`;
+  const rainTitle = (base: string, line: number | undefined) =>
+    `${base}${!isEnsemble(series) ? "" : line !== undefined ? ` vs ${line} mm` : `, ${centre}`} (mm)`;
+  return {
+    charts: [
+    chanceSection,
+    aggregation === "weekly" ? null : (
+      <Section key="rain-day">
+        <RainChart
+          title={rainTitle("Daily rain", dayLine)}
+          key={`${centre}-${dayLine ?? ""}`}
+          series={series}
+          currentDay={currentDay}
+          onSelectDay={onSeekDay}
+          centre={centre}
+          bands={dayLine !== undefined ? "none" : "both"}
+          extremeMm={dayLine}
+          lineLabel={dayLine !== undefined ? lineWords(dayLine) : undefined}
+        />
+      </Section>
+    ),
+    aggregation === "daily" ? null : (
+      <Section key="rain-week">
+        <WeeklyRainChart
+          title={rainTitle("Weekly rain", weekLine)}
+          key={`${centre}-${weekLine ?? ""}`}
+          series={series}
+          currentWeek={currentWeek}
+          onSelectWeek={aggregation === "weekly" ? onSelectWeek : undefined}
+          centre={centre}
+          lineMm={weekLine}
+          lineLabel={weekLine !== undefined ? lineWords(weekLine) : undefined}
+        />
+      </Section>
+    ),
+    ].filter(Boolean),
+    details: [],
+  };
 }
 
 /** Dragging the phone sheet down further than this closes it. */
@@ -603,8 +981,25 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
   }, [currentDay, currentWeek, series]);
   // The headline answers for the period on the map: the day, the week, or (null) the whole run.
   const period = { aggregation: state.aggregation, index: state.index };
-  const periodHero = series ? (layer === "rainfall" ? rainPeriodHero(series, period) : indicatorPeriodHero(layer, series, period)) : null;
+  const view: StatView | null = state.stat ? { stat: state.stat, threshold: state.threshold } : null;
+  const periodHero = series
+    ? layer === "rainfall"
+      ? (statHero(series, period, view) ?? rainPeriodHero(series, period))
+      : indicatorPeriodHero(layer, series, period)
+    : null;
   const hero = series ? periodHero ?? heroFor(layer, series, todayIso(), currentDay) : null;
+  const sections = series
+    ? layerSections({
+        layer,
+        series,
+        aggregation: state.aggregation,
+        currentDay,
+        currentWeek,
+        onSeekDay,
+        onSelectWeek: state.setIndex,
+        view,
+      })
+    : { charts: [], details: [] };
 
   const copyLink = async () => {
     try {
@@ -712,6 +1107,9 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
               {hero.whole ? <span className="ss-hero-whole">{hero.whole}</span> : null}
             </section>
 
+            {layer === "rainfall" ? <StatControls state={state} variant="compact" /> : null}
+            {sections.charts}
+
             <AdvisoryPanel
               advisory={advisory}
               crop={crop}
@@ -720,23 +1118,9 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
               issued={run ? formatDay(run.init_time.slice(0, 10), "short") : undefined}
             />
 
-            <LayerSections
-              layer={layer}
-              series={series}
-              aggregation={state.aggregation}
-              currentDay={currentDay}
-              currentWeek={currentWeek}
-              onSeekDay={onSeekDay}
-              onSelectWeek={state.setIndex}
-            />
+            {sections.details}
 
-            <section className="ss-drawer-notes">
-              {run ? (
-                <p className="ss-source">
-                  {series.support} · {run.source_label} · run {run.run_id} · {run.grid_resolution_degrees ?? 0.1}° grid
-                </p>
-              ) : null}
-            </section>
+            <section className="ss-drawer-notes">{run ? <DataInfo run={run} layer={layer} /> : null}</section>
           </div>
           {SHOW_DRAWER_ACTIONS ? (
             <div className="drawer-actions ss-drawer-actions ss-drawer-footer">
@@ -760,4 +1144,8 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
     </aside>
     </>
   );
+}
+
+function sentenceCase(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

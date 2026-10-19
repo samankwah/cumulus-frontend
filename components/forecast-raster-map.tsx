@@ -55,9 +55,10 @@ const DRAWER_CLEARANCE = 28;
 const PHONE_MAX_WIDTH = 860;
 /** Side margins for the country on phones, where the dock spans the full width. */
 const PHONE_SIDE_PADDING = 20;
-const MAP_STROKE = "rgba(32, 41, 50, 0.92)";
 const MAP_STROKE_SOFT = "rgba(73, 88, 104, 0.7)";
 const MAP_HALO = "rgba(119, 134, 150, 0.42)";
+/** The selected region or district: a colour no other boundary uses, so it reads against region lines. */
+const MAP_SELECT = "#e8590c";
 /** Every border, Ghana's included: only used to mask the basemap's own dashed boundaries. */
 const ALL_BORDERS_URL = "/data/west_africa_country_borders.geojson";
 /** Borders between neighbours, with Ghana's stretch removed (its outline comes from its regions). */
@@ -108,6 +109,11 @@ const getCoastlineStyle = () => COASTLINE_STYLE;
 const getGhanaOutlineStyle = () => GHANA_OUTLINE_STYLE;
 const getWaterAreaStyle = () => WATER_AREA_STYLE;
 const getRegionOutlineStyle = () => REGION_OUTLINE_STYLE;
+/** Drawn above every boundary layer: a pale casing under an accent line. */
+const SELECTION_CASING_STYLE = { fillOpacity: 0, color: "#ffffff", weight: 5.5, opacity: 0.85, lineJoin: "round" as const };
+const SELECTION_LINE_STYLE = { fillOpacity: 0, color: MAP_SELECT, weight: 2.6, opacity: 1, lineJoin: "round" as const };
+const getSelectionCasingStyle = () => SELECTION_CASING_STYLE;
+const getSelectionLineStyle = () => SELECTION_LINE_STYLE;
 const SELECTED_POINT_HALO_STYLE = {
   color: "rgba(255, 255, 255, 0.56)",
   weight: 1,
@@ -722,8 +728,8 @@ function KeepSelectionVisible({
 function regionStyle(isSelected: boolean) {
   return {
     fillColor: isSelected ? "rgba(35, 209, 173, 0.2)" : "rgba(255, 255, 255, 0.1)",
-    color: isSelected ? MAP_STROKE : MAP_STROKE_SOFT,
-    weight: isSelected ? 2 : 1.25,
+    color: isSelected ? MAP_SELECT : MAP_STROKE_SOFT,
+    weight: isSelected ? 2.6 : 1.25,
     opacity: 1,
     fillOpacity: isSelected ? 0.2 : 0.05,
   };
@@ -741,8 +747,8 @@ function regionHaloStyle(isSelected: boolean) {
 function districtStyle(isSelected: boolean) {
   return {
     fillColor: isSelected ? "rgba(35, 209, 173, 0.18)" : "rgba(255, 255, 255, 0.04)",
-    color: isSelected ? MAP_STROKE : MAP_STROKE_SOFT,
-    weight: isSelected ? 1.8 : 0.75,
+    color: isSelected ? MAP_SELECT : MAP_STROKE_SOFT,
+    weight: isSelected ? 2.6 : 0.75,
     opacity: 1,
     fillOpacity: isSelected ? 0.18 : 0.03,
   };
@@ -792,6 +798,18 @@ function ForecastMapOverlay({
     (feature?: DistrictFeature) => districtStyle(feature?.properties.location_id === selectedKey),
     [selectedKey],
   );
+  // The selected shape again, on top: in district mode the region outlines are drawn last and
+  // would otherwise cut across the selected district's edge.
+  const selectedFeatures = useMemo(() => {
+    if (!selectedKey) {
+      return null;
+    }
+    const features =
+      dashboardMode === "region"
+        ? regionFeatures?.features.filter((feature) => feature.properties.region === selectedKey)
+        : districtFeatures?.features.filter((feature) => feature.properties.location_id === selectedKey);
+    return features?.length ? ({ type: "FeatureCollection", features } as FeatureCollection) : null;
+  }, [dashboardMode, districtFeatures, regionFeatures, selectedKey]);
 
   // Keep an open tooltip in sync while the 46-day map animates underneath it.
   useEffect(() => {
@@ -1039,6 +1057,24 @@ function ForecastMapOverlay({
           />
         </>
       )}
+      {selectedFeatures ? (
+        <>
+          <GeoJSON
+            key={`forecast-selection-casing-${dashboardMode}-${selectedKey}`}
+            data={selectedFeatures}
+            interactive={false}
+            pathOptions={NO_PATH_OPTIONS}
+            style={getSelectionCasingStyle}
+          />
+          <GeoJSON
+            key={`forecast-selection-line-${dashboardMode}-${selectedKey}`}
+            data={selectedFeatures}
+            interactive={false}
+            pathOptions={NO_PATH_OPTIONS}
+            style={getSelectionLineStyle}
+          />
+        </>
+      ) : null}
     </>
   );
 }

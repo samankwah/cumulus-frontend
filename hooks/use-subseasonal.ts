@@ -11,7 +11,9 @@ import {
   formatSubseasonalError,
   getSubseasonalAreaValues,
   getSubseasonalLayer,
+  getSubseasonalModels,
   getSubseasonalRuns,
+  CHANCE_THRESHOLDS,
   readUrlState,
   sampleSubseasonalArea,
   sampleSubseasonalPoint,
@@ -21,11 +23,13 @@ import {
 } from "@/lib/subseasonal";
 import type {
   LayerQuery,
+  RainStat,
   SubseasonalAggregation,
   SubseasonalAreaLevel,
   SubseasonalAreaValues,
   SubseasonalLayer,
   SubseasonalLayerKey,
+  SubseasonalModelOption,
   SubseasonalRun,
   SubseasonalSeries,
   SubseasonalUrlState,
@@ -55,6 +59,14 @@ export function useSubseasonal({
   // reading it during render would make the first client render differ from the HTML.
   const initialUrlState = useRef<SubseasonalUrlState | null>(null);
 
+  const [models, setModels] = useState<SubseasonalModelOption[]>([]);
+  const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  // null = the backend's default model; a model is only requested once the URL has been read.
+  const [model, setModelState] = useState<string | null>(null);
+  const [isUrlRead, setIsUrlRead] = useState(false);
+  const [stat, setStatState] = useState<RainStat>("mean");
+  const [threshold, setThresholdState] = useState<number | null>(null);
+
   const [runs, setRuns] = useState<SubseasonalRun[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -70,6 +82,10 @@ export function useSubseasonal({
   useEffect(() => {
     const fromUrl = readUrlState(window.location.search);
     initialUrlState.current = fromUrl;
+    setModelState(fromUrl.model);
+    if (fromUrl.stat) setStatState(fromUrl.stat);
+    if (fromUrl.threshold) setThresholdState(fromUrl.threshold);
+    setIsUrlRead(true);
     setLayerState(fromUrl.layer);
     setAggregationState(fromUrl.aggregation);
     if (fromUrl.day) setDayState(fromUrl.day);
@@ -79,7 +95,8 @@ export function useSubseasonal({
   const [layerMeta, setLayerMeta] = useState<SubseasonalLayer | null>(null);
   const [layerError, setLayerError] = useState<string | null>(null);
   const [layerAttempt, setLayerAttempt] = useState(0);
-  const [areaValues, setAreaValues] = useState<SubseasonalAreaValues | null>(null);
+  // Tagged with the statistic they were fetched for, so map hover never shows the previous one's values.
+  const [areaValues, setAreaValues] = useState<(SubseasonalAreaValues & { stat: string | null; threshold: number | null }) | null>(null);
 
   const [selection, setSelection] = useState<SubseasonalSelection | null>(null);
   const [series, setSeries] = useState<SubseasonalSeries | null>(null);
@@ -104,6 +121,13 @@ export function useSubseasonal({
   const index = effectiveAggregation === "daily" ? Math.max(day, 1) : effectiveAggregation === "weekly" ? week : 1;
   const indexCount = effectiveAggregation === "daily" ? dayCount : effectiveAggregation === "weekly" ? weekCount : 1;
   const hasTimeline = effectiveAggregation !== "total" && indexCount > 1;
+  // Ensemble rainfall offers mean / median / chance; everything else maps one way.
+  const isEnsembleRun = (run?.members ?? 1) > 1;
+  const effectiveStat: RainStat | null = isEnsembleRun && layer === "rainfall" ? stat : null;
+  const chanceThresholds = CHANCE_THRESHOLDS[effectiveAggregation];
+  const effectiveThreshold =
+    effectiveStat === "chance" ? (threshold !== null && chanceThresholds.includes(threshold) ? threshold : chanceThresholds[0]) : null;
+  const requestModel = model && model !== defaultModel ? model : null;
 
   // A link to a layer this backend does not serve (e.g. onset on an older deployment) opens rainfall.
   useEffect(() => {
@@ -121,20 +145,48 @@ export function useSubseasonal({
     week >= 1 &&
     week <= Math.max(run.weeks.length, 1);
   const query = useMemo<LayerQuery | null>(
-    () => (run && isTimeSettled ? { runId: run.run_id, layer, aggregation: effectiveAggregation, index } : null),
-    [effectiveAggregation, index, isTimeSettled, layer, run],
+    () =>
+      run && isTimeSettled
+        ? {
+            model: requestModel,
+            runId: run.run_id,
+            layer,
+            aggregation: effectiveAggregation,
+            index,
+            stat: effectiveStat,
+            threshold: effectiveThreshold,
+          }
+        : null,
+    [effectiveAggregation, effectiveStat, effectiveThreshold, index, isTimeSettled, layer, requestModel, run],
   );
   const tileUrl = useMemo(() => (query ? subseasonalTileUrl(query) : null), [query]);
 
-  /* ------------------------------------------------------------------ runs */
+  /* ------------------------------------------------------------------ models (the picker) */
   useEffect(() => {
     if (!active) {
       return;
     }
     const controller = new AbortController();
+    getSubseasonalModels(controller.signal)
+      .then((payload) => {
+        setModels(payload.models);
+        setDefaultModel(payload.default_model);
+      })
+      .catch(() => {
+        // Older backends have no model list: the picker stays hidden and the default model is shown.
+      });
+    return () => controller.abort();
+  }, [active]);
+
+  /* ------------------------------------------------------------------ runs */
+  useEffect(() => {
+    if (!active || !isUrlRead) {
+      return;
+    }
+    const controller = new AbortController();
     setIsRunsLoading(true);
     setRunsError(null);
-    getSubseasonalRuns(controller.signal)
+    getSubseasonalRuns(model, controller.signal)
       .then((payload) => {
         setRuns(payload.runs);
         const linked = initialUrlState.current?.run ?? null;
@@ -155,7 +207,7 @@ export function useSubseasonal({
         }
       });
     return () => controller.abort();
-  }, [active, runsAttempt]);
+  }, [active, isUrlRead, model, runsAttempt]);
 
   // Clamp the time selection to the run, defaulting to "today" when the run covers it.
   useEffect(() => {
@@ -202,7 +254,7 @@ export function useSubseasonal({
     }
     const controller = new AbortController();
     getSubseasonalAreaValues({ ...query, level: areaLevel }, controller.signal)
-      .then((payload) => setAreaValues(payload))
+      .then((payload) => setAreaValues({ ...payload, stat: query.stat ?? null, threshold: query.threshold ?? null }))
       .catch(() => {
         // Hover values are an enhancement; the map stays usable without them.
       });
@@ -219,8 +271,8 @@ export function useSubseasonal({
     setSeriesError(null);
     const request =
       selection.kind === "point"
-        ? sampleSubseasonalPoint(run.run_id, selection.latitude, selection.longitude, controller.signal)
-        : sampleSubseasonalArea(run.run_id, selection.level, selection.name, controller.signal);
+        ? sampleSubseasonalPoint(requestModel, run.run_id, selection.latitude, selection.longitude, controller.signal)
+        : sampleSubseasonalArea(requestModel, run.run_id, selection.level, selection.name, controller.signal);
     request
       .then((payload) => setSeries(payload))
       .catch((error: unknown) => {
@@ -235,11 +287,18 @@ export function useSubseasonal({
         }
       });
     return () => controller.abort();
-  }, [active, run, selection, seriesAttempt]);
+  }, [active, requestModel, run, selection, seriesAttempt]);
 
   // Geography mode switches clear an area selection made at the other level.
   useEffect(() => {
-    setSelection((current) => (current?.kind === "area" && current.level !== areaLevel ? null : current));
+    setSelection((current) => {
+      if (current?.kind === "area" && current.level !== areaLevel) {
+        // Drop the old place's series too, or the drawer keeps its charts under "Pick a location".
+        setSeries(null);
+        return null;
+      }
+      return current;
+    });
   }, [areaLevel]);
 
   /* ------------------------------------------------------------------ deep-link restore (once the run is known) */
@@ -284,6 +343,9 @@ export function useSubseasonal({
     }
     writeUrlState({
       view: "subseasonal",
+      model: requestModel,
+      stat: effectiveStat,
+      threshold: effectiveThreshold,
       run: run && run.run_id !== activeRunId ? run.run_id : null,
       layer,
       aggregation: effectiveAggregation,
@@ -292,7 +354,7 @@ export function useSubseasonal({
       point: selection?.kind === "point" ? { latitude: selection.latitude, longitude: selection.longitude } : null,
       area: selection?.kind === "area" ? { level: selection.level, name: selection.name } : null,
     });
-  }, [active, activeRunId, day, effectiveAggregation, layer, run, selection, week]);
+  }, [active, activeRunId, day, effectiveAggregation, effectiveStat, effectiveThreshold, layer, requestModel, run, selection, week]);
 
   /* ------------------------------------------------------------------ playback: advance only after the current frame's tiles loaded */
   const lastStepRef = useRef(0);
@@ -385,6 +447,25 @@ export function useSubseasonal({
     [day, run, runs],
   );
 
+  /** Switch forecast model: its newest run, keeping the layer, period and selected place. */
+  const selectModel = useCallback(
+    (nextModel: string) => {
+      if (nextModel === (model ?? defaultModel) || !models.some((item) => item.id === nextModel && item.available)) {
+        return;
+      }
+      setIsPlaying(false);
+      setSeries(null);
+      setLayerMeta(null);
+      setRunId(null);
+      setRuns([]);
+      setModelState(nextModel === defaultModel ? null : nextModel);
+    },
+    [defaultModel, model, models],
+  );
+
+  const setStat = useCallback((next: RainStat) => setStatState(next), []);
+  const setThreshold = useCallback((next: number) => setThresholdState(next), []);
+
   const selectPoint = useCallback((latitude: number, longitude: number) => {
     setSelection({ kind: "point", latitude, longitude });
     setSeries(null);
@@ -409,6 +490,16 @@ export function useSubseasonal({
   }, []);
 
   return {
+    /** Every configured model for the picker (those without runs yet are shown disabled); empty on older backends. */
+    models,
+    model: model ?? defaultModel,
+    selectModel,
+    /** Ensemble rainfall statistic (null when the layer or run has no choice). */
+    stat: effectiveStat,
+    setStat,
+    threshold: effectiveThreshold,
+    chanceThresholds,
+    setThreshold,
     runs,
     run,
     activeRunId,

@@ -110,7 +110,7 @@ export function DashboardShell() {
   const changeView = useCallback((next: DashboardView) => {
     setView(next);
     if (next === "seasonal") {
-      writeUrlState({ view: "seasonal", run: null, layer: "rainfall", aggregation: "daily", day: null, week: null, point: null, area: null });
+      writeUrlState({ view: "seasonal", model: null, stat: null, threshold: null, run: null, layer: "rainfall", aggregation: "daily", day: null, week: null, point: null, area: null });
     }
   }, []);
 
@@ -209,9 +209,15 @@ export function DashboardShell() {
     }
     const legendMeta = layerMeta && areaValues && layerMeta.layer === areaValues.layer ? layerMeta : null;
     const fresh =
-      areaValues && query && areaValues.layer === query.layer && areaValues.aggregation === query.aggregation && areaValues.index === query.index;
+      areaValues &&
+      query &&
+      areaValues.layer === query.layer &&
+      areaValues.aggregation === query.aggregation &&
+      areaValues.index === query.index &&
+      areaValues.stat === (query.stat ?? null) &&
+      areaValues.threshold === (query.threshold ?? null);
     return {
-      key: `${areaValues?.run_id}:${areaValues?.layer}:${areaValues?.aggregation}:${areaValues?.index}:${areaValues?.level}`,
+      key: `${areaValues?.run_id}:${areaValues?.layer}:${areaValues?.aggregation}:${areaValues?.index}:${areaValues?.level}:${areaValues?.stat}:${areaValues?.threshold}`,
       render: ({ name }) => {
         const heading = `<strong>${escapeHtml(name)}</strong>`;
         if (!areaValues || !fresh) {
@@ -222,7 +228,7 @@ export function DashboardShell() {
           // Day maps flag cells 100/0, so the area mean is the share of the area flagged.
           const label = legendMeta.legend.bins[0]?.label ?? layerMeta?.layer_label ?? "";
           const share = value === null ? "–" : `${Math.round(value)}%`;
-          return `${heading}<br/><span class="ss-tip-value">${escapeHtml(label)}</span><br/><span class="tooltip-muted">across ${share} of the area</span>`;
+          return `${heading}<br/><span class="ss-tip-value">${escapeHtml(label)}</span> <span class="tooltip-muted">· ${share} of area</span>`;
         }
         const color = legendMeta ? legendColorFor(legendMeta.legend, value) : null;
         const swatch = color ? `<i class="ss-tip-swatch" style="background:${color}"></i>` : "";
@@ -237,17 +243,20 @@ export function DashboardShell() {
         }
         if (areaValues.unit === "date" && layerMeta) {
           // Onset of the area's mean rainfall, the same figure the drawer shows for this area.
+          return [heading, `<span class="ss-tip-value">${swatch}${escapeHtml(formatOnset(value, layerMeta.start_date, layerMeta.end_date))}</span>`].join("<br/>");
+        }
+        if (areaValues.stat === "chance") {
+          // Ensemble chance: the area's average share of members reaching the amount.
+          const chance = value === null ? "–" : `${Math.round(value)}%`;
           return [
             heading,
-            `<span class="ss-tip-value">${swatch}${escapeHtml(formatOnset(value, layerMeta.start_date, layerMeta.end_date))}</span>`,
-            `<span class="tooltip-muted">Onset of the area's mean rainfall</span>`,
+            `<span class="ss-tip-value">${swatch}${escapeHtml(chance)}</span> <span class="tooltip-muted">· ≥${escapeHtml(String(areaValues.threshold ?? ""))} mm</span>`,
           ].join("<br/>");
         }
-        const period = layerMeta?.title.split(" · ").slice(1).join(" · ") ?? "";
+        const statWord = areaValues.stat === "median" ? "median" : areaValues.stat === "mean" ? "mean" : "area mean";
         return [
           heading,
-          `<span class="ss-tip-value">${swatch}${escapeHtml(formatAmount(value, areaValues.unit))}</span>`,
-          `<span class="tooltip-muted">Area mean${period ? ` · ${escapeHtml(period)}` : ""}</span>`,
+          `<span class="ss-tip-value">${swatch}${escapeHtml(formatAmount(value, areaValues.unit))}</span> <span class="tooltip-muted">· ${statWord}</span>`,
         ].join("<br/>");
       },
     };

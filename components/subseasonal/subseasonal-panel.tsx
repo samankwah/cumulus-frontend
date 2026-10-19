@@ -14,6 +14,7 @@ import {
 import type { SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
 import { ForecastTimeline } from "@/components/subseasonal/forecast-timeline";
+import { PillMenu } from "@/components/subseasonal/pill-menu";
 import { EnsembleHint, StatControls } from "@/components/subseasonal/stat-controls";
 import { SteppedLegend } from "@/components/subseasonal/stepped-legend";
 
@@ -110,22 +111,24 @@ export function RunBadge({ state }: { state: SubseasonalState }) {
 
 /**
  * The forecast model (IFS-UNet, IFS-Diffusion, Aurora...). A pill in the run badge; when more than
- * one model has runs it is also the picker, a native select laid over the pill like the issue date.
+ * one model is configured it opens a menu, with models that have no runs yet listed but disabled.
  */
-export function ModelPicker({ state, testId = "ss-model" }: { state: SubseasonalState; testId?: string }) {
+export function ModelPicker({
+  state,
+  testId = "ss-model",
+  align = "start",
+}: {
+  state: SubseasonalState;
+  testId?: string;
+  /** Phones: the pill sits at the right edge, so the menu opens leftwards. */
+  align?: "start" | "end";
+}) {
   const { run, models } = state;
   if (!run) {
     return null;
   }
-  // A picker once a second model is configured; models without runs yet are listed but disabled.
-  const choosable = models.length > 1;
-  const current = models.find((item) => item.id === state.model);
-  return (
-    <span
-      className={`ss-run-model${choosable ? " choosable" : ""}`}
-      title={`${current?.source_label ?? run.source_label}${choosable ? ". Choose another model." : ""}`}
-      data-testid={choosable ? undefined : testId}
-    >
+  const pill = (
+    <>
       {run.model_label}
       {(run.members ?? 1) > 1 ? <small className="ss-run-members">×{run.members}</small> : null}
       {run.synthetic ? (
@@ -133,30 +136,38 @@ export function ModelPicker({ state, testId = "ss-model" }: { state: Subseasonal
           Demo
         </small>
       ) : null}
-      {choosable ? (
-        <>
-          <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
-            <path d="m6 8 4 4 4-4" />
-          </svg>
-          <select value={state.model ?? ""} data-testid={testId} aria-label="Forecast model" onChange={(event) => state.selectModel(event.target.value)}>
-            {models.map((item) => (
-              <option key={item.id} value={item.id} disabled={!item.available}>
-                {item.label}
-                {!item.available
-                  ? " · data coming soon"
-                  : `${(item.members ?? 1) > 1 ? ` · ensemble of ${item.members}` : " · single run"}${item.synthetic ? " (demo data)" : ""}`}
-              </option>
-            ))}
-          </select>
-        </>
-      ) : null}
-    </span>
+    </>
+  );
+  if (models.length < 2) {
+    return (
+      <span className="ss-run-model" title={run.source_label} data-testid={testId}>
+        {pill}
+      </span>
+    );
+  }
+  return (
+    <PillMenu
+      className="ss-run-model choosable"
+      label="Forecast model"
+      testId={testId}
+      align={align}
+      value={state.model ?? ""}
+      onChange={state.selectModel}
+      trigger={pill}
+      options={models.map((item) => ({
+        value: item.id,
+        label: item.label,
+        detail: !item.available ? "Data coming soon" : (item.members ?? 1) > 1 ? `Ensemble of ${item.members}` : "Single run",
+        badge: item.available && item.synthetic ? "Demo" : undefined,
+        disabled: !item.available,
+      }))}
+    />
   );
 }
 
 /**
  * Forecast issue date (the model run's start). A pill in the run badge; with more than one run kept
- * it is also the picker, a native select laid over the pill so it works with touch and keyboard.
+ * it opens a menu of the kept runs, newest first.
  */
 export function IssueDatePicker({
   state,
@@ -172,36 +183,30 @@ export function IssueDatePicker({
   if (!run) {
     return null;
   }
-  const choosable = runs.length > 1;
   const label = formatInitTime(run.init_time).split(" ").slice(0, 3).join(" ");
+  const text = bare ? label : `Issued ${label}`;
+  if (runs.length < 2) {
+    return (
+      <span className="ss-run-issue" title={`Model run started ${formatInitTime(run.init_time)}`} data-testid={testId}>
+        {text}
+      </span>
+    );
+  }
   return (
-    <span
-      className={`ss-run-issue${choosable ? " choosable" : ""}`}
-      title={`Model run started ${formatInitTime(run.init_time)}${choosable ? ". Choose another issue date." : ""}`}
-      data-testid={choosable ? undefined : testId}
-    >
-      {bare ? label : `Issued ${label}`}
-      {choosable ? (
-        <>
-          <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
-            <path d="m6 8 4 4 4-4" />
-          </svg>
-          <select
-            value={run.run_id}
-            data-testid={testId}
-            aria-label="Forecast issue date"
-            onChange={(event) => state.selectRun(event.target.value)}
-          >
-            {runs.map((item) => (
-              <option key={item.run_id} value={item.run_id}>
-                {formatIssueDate(item.init_time)}
-                {item.run_id === state.activeRunId ? " · latest" : ""}
-              </option>
-            ))}
-          </select>
-        </>
-      ) : null}
-    </span>
+    <PillMenu
+      className="ss-run-issue choosable"
+      label="Forecast issue date"
+      testId={testId}
+      align={bare ? "end" : "start"}
+      value={run.run_id}
+      onChange={state.selectRun}
+      trigger={text}
+      options={runs.map((item) => ({
+        value: item.run_id,
+        label: formatIssueDate(item.init_time),
+        detail: item.run_id === state.activeRunId ? "Latest" : `${item.age_days} days old`,
+      }))}
+    />
   );
 }
 
@@ -371,7 +376,7 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
             <div className="ss-option-row">
               <span className="ss-option-label">Model</span>
               <div className="ss-run ss-run-inline">
-                <ModelPicker state={state} testId="ss-mmodel" />
+                <ModelPicker state={state} testId="ss-mmodel" align="end" />
               </div>
             </div>
           ) : null}

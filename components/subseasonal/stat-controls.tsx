@@ -116,26 +116,3 @@ export function StatControls({ state, variant }: { state: SubseasonalState; vari
     </div>
   );
 }
-
-/**
- * With a single-run model on the rainfall layer, point to an ensemble model that has data: the
- * probability views exist, they just need members.
- */
-export function EnsembleHint({ state }: { state: SubseasonalState }) {
-  const run = state.run;
-  if (!run || (run.members ?? 1) > 1 || state.layer !== "rainfall") {
-    return null;
-  }
-  const ensemble = state.models.find((item) => item.available && (item.members ?? 1) > 1 && item.id !== state.model);
-  if (!ensemble) {
-    return null;
-  }
-  return (
-    <p className="ss-ensemble-hint" data-testid="ss-ensemble-hint">
-      Mean, median and chance views need an ensemble.{" "}
-      <button type="button" className="ss-link-button" onClick={() => state.selectModel(ensemble.id)}>
-        Switch to {ensemble.label} ({ensemble.members} members)
-      </button>
-    </p>
-  );
-}

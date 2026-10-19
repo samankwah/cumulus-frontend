@@ -3284,17 +3284,6 @@
   align-items: start;
 }
 
-.ss-ensemble-hint {
-  margin: -4px 0 0;
-  color: var(--muted);
-  font-size: 0.82rem;
-  line-height: 1.45;
-}
-
-.ss-ensemble-hint .ss-link-button {
-  font-size: inherit;
-  cursor: pointer;
-}
 
 /* Dock: which statistic the map shows, above the legend. */
 .ss-dock-stat {

@@ -395,7 +395,8 @@ export function extremeChanceByDate(series: SubseasonalSeries, mm: number) {
 
 /** How a chance for this place is counted, in words: members at a point, cells over an area. */
 export function chanceBasis(series: SubseasonalSeries) {
-  return series.kind === "point" ? `share of ${series.members ?? 1} members` : `area average of ${series.cell_count} cells, as on the map`;
+  // A legend label: short, names what the bars are. Areas average the map's cells, so they match it.
+  return series.kind === "point" ? `share of ${series.members ?? 1} members` : "area average";
 }
 
 /** Ensemble runs carry a per-member spread; single runs do not. */

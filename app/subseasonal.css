@@ -150,8 +150,10 @@
 }
 
 /* Desktop panel header: one quiet meta line rather than three kinds of pill. */
+/* Spacing, not "·" separators, between the items: a separator would be left dangling at the start of
+   the second line when the badge makes the line wrap. */
 .brand-block .ss-run {
-  gap: 4px 0;
+  gap: 6px 14px;
   margin-top: 16px;
 }
 
@@ -164,13 +166,7 @@
   font-size: 0.9rem;
 }
 
-.brand-block .ss-run > span + span::before {
-  order: -2;
-  content: "·";
-  margin: 0 8px;
-  color: var(--muted);
-  font-weight: 400;
-}
+
 
 .brand-block .ss-run .ss-run-model {
   padding: 0 9px;
@@ -183,13 +179,6 @@
   letter-spacing: 0.02em;
 }
 
-.brand-block .ss-run .ss-run-model + span {
-  margin-left: 12px;
-}
-
-.brand-block .ss-run .ss-run-model + span::before {
-  content: none;
-}
 
 .brand-block .ss-run .ss-run-issue {
   color: var(--ink);
@@ -291,6 +280,17 @@
   /* Period and Geography: a label beside a slim segmented track. */
   .view-subseasonal .control-card .control-group:has(> .control-field > .segmented) {
     gap: 0;
+  }
+
+  /* Show + At least are two rows of one group: keep the panel's 20px row rhythm between them, and
+     hang the explanation under the tracks rather than under the labels. */
+  .view-subseasonal .control-card .control-group.ss-stat-group:has(> .control-field > .segmented) {
+    gap: 20px;
+  }
+
+  .view-subseasonal .control-card .control-group.ss-stat-group .ss-stat-note {
+    margin-top: -12px;
+    padding-left: 120px;
   }
 
   .view-subseasonal .control-card .control-field:has(> .segmented) {
@@ -2544,9 +2544,14 @@
   gap: 8px;
 }
 
-.ss-stat-group {
+/* Same 20px rhythm as the other panel rows; the explanation sits close under its control. */
+.control-group.ss-stat-group {
   display: grid;
-  gap: 12px;
+  gap: 20px;
+}
+
+.control-group.ss-stat-group .ss-stat-note {
+  margin-top: -12px;
 }
 
 /* "About this data": model, checkpoint and sampler behind the forecast. */
@@ -3204,7 +3209,7 @@
   line-height: 1.4;
 }
 
-.ss-stat-group .ss-stat-note {
+.control-group.ss-stat-group .ss-stat-note {
   padding-left: 2px;
 }
 

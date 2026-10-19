@@ -119,6 +119,8 @@ export type SubseasonalRun = {
   ensemble: string;
   /** 1 for a single run; missing from older backends. */
   members?: number;
+  /** A made-up demo run, not model output. */
+  synthetic?: boolean;
   init_time: string;
   ingested_at: string | null;
   /** Missing from backends older than provenance tracking. */
@@ -149,6 +151,7 @@ export type SubseasonalModelOption = {
   active_run_id?: string | null;
   init_time?: string | null;
   members?: number | null;
+  synthetic?: boolean;
 };
 
 export type SubseasonalModelsResponse = {

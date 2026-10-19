@@ -27,6 +27,17 @@ type MockOptions = { failRuns?: boolean; indicatorPeriods?: boolean; onset?: boo
 
 const EARLIER_RUN_ID = "ifs_unet_2026091800";
 
+/**
+ * The fixtures hold the run issued 25 Sep 2026 (forecast to 9 Nov). Everything that counts from
+ * "today" (the default day, the Today line, elapsed days, the advice window) is pinned to a fixed
+ * day inside that run, so the suite does not change meaning as the real date moves on.
+ */
+const FIXED_NOW = new Date("2026-10-19T09:00:00Z");
+
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(FIXED_NOW);
+});
+
 /** The fixture run moved a week earlier, as if an older run were still kept. */
 function earlierRun(run: (typeof runs.runs)[number]) {
   const shift = (iso: string) => {

@@ -128,6 +128,11 @@ export function ModelPicker({ state, testId = "ss-model" }: { state: Subseasonal
     >
       {run.model_label}
       {(run.members ?? 1) > 1 ? <small className="ss-run-members">×{run.members}</small> : null}
+      {run.synthetic ? (
+        <small className="ss-run-demo" data-testid="ss-demo-badge" title="Synthetic demo data, not a real forecast">
+          Demo
+        </small>
+      ) : null}
       {choosable ? (
         <>
           <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
@@ -137,7 +142,9 @@ export function ModelPicker({ state, testId = "ss-model" }: { state: Subseasonal
             {models.map((item) => (
               <option key={item.id} value={item.id} disabled={!item.available}>
                 {item.label}
-                {!item.available ? " · data coming soon" : (item.members ?? 1) > 1 ? ` · ensemble of ${item.members}` : " · single run"}
+                {!item.available
+                  ? " · data coming soon"
+                  : `${(item.members ?? 1) > 1 ? ` · ensemble of ${item.members}` : " · single run"}${item.synthetic ? " (demo data)" : ""}`}
               </option>
             ))}
           </select>

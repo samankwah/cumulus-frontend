@@ -33,6 +33,11 @@ export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: Subseason
   return (
     <details className="ss-fold ss-data-info" data-testid="subseasonal-data-info">
       <summary>About this data</summary>
+      {run.synthetic ? (
+        <p className="ss-data-demo" data-testid="ss-data-demo">
+          Demo data: a made-up ensemble for testing the views. Not a forecast.
+        </p>
+      ) : null}
       <dl className="ss-data-list">
         <dt>Forecast</dt>
         <dd>

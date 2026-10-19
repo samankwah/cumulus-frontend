@@ -875,6 +875,12 @@ function longestDryRun(forecast: Forecast, window: SubseasonalDay[]) {
   return longest;
 }
 
+/** Days in the window with flood-level rain: a 10%+ chance for an ensemble, forecast for a single run. */
+function extremeDays(series: SubseasonalSeries, window: SubseasonalDay[]) {
+  const ensemble = (series.members ?? 1) > 1;
+  return window.filter((day) => (day.extreme_prob ?? 0) >= (ensemble ? 10 : 50));
+}
+
 /**
  * One plain sentence on what the selected indicator shows over the validity window: rain amounts
  * for rainfall, rain days for rain days, only dry (or wet) spells for the spell layers, the onset date.
@@ -895,6 +901,17 @@ function outlookFor(layer: SubseasonalLayerKey, forecast: Forecast, series: Subs
   if (layer === "rainy_days") {
     const rainDays = window.filter((day) => rain(day) >= forecast.wetDayMm).length;
     return `Rain on ${rainDays} of ${span}. Longest dry run: ${longestDryRun(forecast, window)} days.`;
+  }
+  if (layer === "extreme_rain") {
+    const risky = extremeDays(series, window);
+    const threshold = series.thresholds.extreme_rain_mm ?? 50;
+    if (!risky.length) return `No day of ${threshold} mm or more ahead.`;
+    const ensemble = (series.members ?? 1) > 1;
+    const listed = risky
+      .slice(0, 3)
+      .map((day) => `${formatDay(day.date, "weekday")}${ensemble ? ` (${Math.round(day.extreme_prob ?? 0)}% chance)` : ""}`)
+      .join(", ");
+    return `${threshold} mm or more in a day ${ensemble ? "possible" : "forecast"} on ${listed}${risky.length > 3 ? " and later" : ""}.`;
   }
   if (layer === "onset") {
     const onset = series.onset ?? null;
@@ -956,6 +973,11 @@ function impactFor(
       return crop.droughtHardy ? `Few rain days, but ${crop.noun} cope with dry weather.` : `Few rain days. ${sentence(crops)} may run short of water.`;
     }
     return "Good for spraying, weeding and other field work.";
+  }
+  if (layer === "extreme_rain") {
+    if (!extremeDays(series, window).length) return "No flood-level rain expected. Field work can go ahead.";
+    if (ctx.stage === "harvest") return `Very heavy rain can damage ${crop.noun} still in the field and flood stores.`;
+    return "Very heavy rain can flood low fields, wash away seed and fertilizer, and cut off roads.";
   }
   if (layer === "onset") {
     const onset = series.onset ?? null;
@@ -1038,6 +1060,12 @@ function generalActions(
       actions.push(action(forecast, null, "All period", "Few rain days. Store water for animals.", "livestock"));
     } else if (includeLivestock && share >= 0.6) {
       actions.push(action(forecast, null, "All period", "Rain most days. Keep animal pens dry and feed under cover.", "livestock"));
+    }
+  } else if (layer === "extreme_rain") {
+    const risky = extremeDays(series, window)[0];
+    if (risky && includeLivestock) {
+      const day = forecast.days.find((item) => item.day === risky.day) ?? null;
+      actions.push(action(forecast, day, formatDay(risky.date, "weekday"), "Flood risk. Move animals and feed to higher ground.", "livestock"));
     }
   } else if (layer === "rainfall") {
     const heavy = forecast.heavyDays().find((day) => day.day <= last) ?? null;

@@ -47,7 +47,12 @@ export function ForecastTimeline({
   isPlaying,
   onTogglePlaying,
   isBusy,
+  values,
+  unit,
 }: {
+  /** Replaces the national mean rainfall per frame (ensemble median, or % chance). */
+  values?: (number | null)[] | null;
+  unit?: string | null;
   run: SubseasonalRun;
   aggregation: SubseasonalAggregation;
   index: number;
@@ -57,10 +62,16 @@ export function ForecastTimeline({
   isBusy: boolean;
 }) {
   const sliderId = useId();
-  const frames = useMemo(() => buildFrames(run, aggregation), [aggregation, run]);
+  const frames = useMemo(() => {
+    const built = buildFrames(run, aggregation);
+    return values && values.length === built.length ? built.map((frame, position) => ({ ...frame, value: values[position] })) : built;
+  }, [aggregation, run, values]);
+  const isChance = unit === "%" && Boolean(values);
+  const describe = (value: number | null) =>
+    isChance ? `${Math.round(value ?? 0)}% chance, Ghana mean` : `${formatAmount(value, "mm")} ${values ? "median" : ""} Ghana mean`.replace("  ", " ");
   const count = frames.length;
   const current = frames[Math.min(Math.max(index, 1), count) - 1];
-  const maxValue = Math.max(1, ...frames.map((frame) => frame.value ?? 0));
+  const maxValue = isChance ? 100 : Math.max(1, ...frames.map((frame) => frame.value ?? 0));
   const today = todayIso();
   const todayFrame =
     aggregation === "weekly"
@@ -177,7 +188,7 @@ export function ForecastTimeline({
                 width: barWidth,
                 height: `${Math.max(6, ((frame.value ?? 0) / maxValue) * 100)}%`,
               }}
-              title={`${frame.label}: ${formatAmount(frame.value, "mm")} Ghana mean`}
+              title={`${frame.label}: ${describe(frame.value)}`}
             />
           ))}
         </div>

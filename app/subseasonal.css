@@ -15,6 +15,8 @@
   --ss-dry-soft: rgba(240, 169, 69, 0.2);
   --ss-wet: #1f9c8a;
   --ss-wet-soft: rgba(58, 168, 148, 0.18);
+  --ss-extreme: #c92a2a;
+  --ss-extreme-soft: rgba(201, 42, 42, 0.16);
   --ss-sand: #efe4c6;
 }
 
@@ -73,7 +75,37 @@
   stroke-linejoin: round;
 }
 
+.ss-run .ss-run-model.choosable {
+  position: relative;
+  gap: 4px;
+  padding-right: 6px;
+  cursor: pointer;
+}
+
+.ss-run-model svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ss-run-members {
+  margin-left: 4px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  opacity: 0.75;
+}
+
+.ss-run-model:focus-within {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: 2px;
+}
+
 /* The native select covers the pill: the pill is what shows, the select is what opens. */
+.ss-run-model select,
 .ss-run-issue select {
   position: absolute;
   inset: 0;
@@ -353,12 +385,14 @@
 }
 
 /* The three narrow cards: tighter insides so the short names fit whole at the larger size. */
-.ss-layer-grid.count-5 .ss-layer-option:nth-child(n + 3) {
+.ss-layer-grid.count-5 .ss-layer-option:nth-child(n + 3),
+.ss-layer-grid.count-6 .ss-layer-option {
   column-gap: 6px;
   padding-inline: 10px;
 }
 
-.ss-layer-grid.count-5 .ss-layer-option:nth-child(n + 3) strong {
+.ss-layer-grid.count-5 .ss-layer-option:nth-child(n + 3) strong,
+.ss-layer-grid.count-6 .ss-layer-option strong {
   font-size: 0.98rem;
 }
 
@@ -419,6 +453,10 @@
 
 .ss-layer-option.ss-layer-wet_spell_days {
   --layer-dot: var(--ss-wet);
+}
+
+.ss-layer-option.ss-layer-extreme_rain {
+  --layer-dot: var(--ss-extreme);
 }
 
 .ss-layer-option.ss-layer-onset {
@@ -1001,6 +1039,48 @@
   box-shadow: inset 2px 0 0 var(--ss-onset);
 }
 
+.ss-frame-legend .spread-box::before {
+  background: #3fd0d4;
+  box-shadow: inset 0 0 0 1px #1f6f8b;
+}
+
+.ss-frame-legend .spread-outer::before {
+  width: 7px;
+  margin-inline: 3px 9px;
+  background: #a7e8ea;
+  box-shadow: inset 0 0 0 1px #1f6f8b;
+}
+
+.ss-frame-legend .spread-whisker::before {
+  width: 2px;
+  height: 12px;
+  margin-inline: 6px 12px;
+  background: #2b3440;
+}
+
+.ss-frame-legend .spread-mean::before {
+  height: 2px;
+  vertical-align: middle;
+  background: #2f3fd0;
+}
+
+.ss-frame-legend .spread-mean-dot::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2f3fd0;
+}
+
+.ss-frame-legend .extreme-line::before {
+  height: 0;
+  vertical-align: middle;
+  border-top: 2px dashed var(--ss-extreme);
+}
+
+.ss-frame-legend .chance::before {
+  background: var(--chance-color, var(--ss-rain));
+}
+
 .ss-frame-legend .past::before {
   background: rgba(118, 134, 151, 0.3);
 }
@@ -1014,6 +1094,7 @@
 
 .ss-chart-readout {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
   min-height: 22px;
@@ -1080,6 +1161,146 @@
 .ss-chart-hit {
   fill: transparent;
   cursor: pointer;
+}
+
+/* Ensemble box-and-whiskers (ECMWF meteogram style): cyan box over the middle half of the
+   members, a thin dark whisker over their full range, a dark median tick and a blue mean line. */
+.ss-spread-whisker {
+  stroke: #2b3440;
+  stroke-width: 1;
+}
+
+.ss-spread-box {
+  fill: #3fd0d4;
+  stroke: #1f6f8b;
+  stroke-width: 0.8;
+  shape-rendering: crispEdges;
+}
+
+.ss-spread-outer {
+  fill: #a7e8ea;
+  stroke: #1f6f8b;
+  stroke-width: 0.6;
+  shape-rendering: crispEdges;
+}
+
+/* The wettest member when it runs off the top of the axis: extremes stay visible. */
+.ss-spread-clipped {
+  fill: #c92a2a;
+  font-size: 9.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* "By this date" chances: a filled step line in the layer's colour. */
+.ss-cumulative-area {
+  fill: var(--chance-color, var(--ss-rain));
+  opacity: 0.16;
+}
+
+.ss-cumulative-line {
+  fill: none;
+  stroke: var(--chance-color, var(--ss-rain));
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.ss-cumulative-dot {
+  fill: #ffffff;
+  stroke: var(--chance-color, var(--ss-rain));
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.ss-frame-legend .chance-line::before {
+  height: 0;
+  vertical-align: middle;
+  border-top: 2px solid var(--chance-color, var(--ss-rain));
+}
+
+.tone-rainy {
+  --chance-color: #2f96d4;
+}
+
+.ss-even-odds line {
+  stroke: rgba(59, 70, 82, 0.45);
+  stroke-dasharray: 2 4;
+}
+
+.ss-even-odds text {
+  fill: rgba(59, 70, 82, 0.7);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ss-spread-median {
+  stroke: #12324a;
+  stroke-width: 1.6;
+}
+
+.ss-spread.past {
+  opacity: 0.45;
+}
+
+.ss-spread.hover .ss-spread-box {
+  fill: #22b5c4;
+}
+
+.ss-spread.current .ss-spread-box {
+  fill: #0f8fa6;
+}
+
+.ss-spread-mean {
+  fill: none;
+  stroke: #2f3fd0;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.ss-spread-mean-dot {
+  fill: #2f3fd0;
+  stroke: #ffffff;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.ss-chart-threshold.extreme {
+  stroke: var(--ss-extreme);
+  stroke-dasharray: 5 3;
+}
+
+.ss-chart-spread-text {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+}
+
+/* Daily chances (0-100%), coloured by layer. */
+.ss-chance-bar {
+  fill: var(--chance-color, var(--ss-rain));
+  shape-rendering: crispEdges;
+}
+
+.tone-extreme {
+  --chance-color: var(--ss-extreme);
+}
+
+.tone-dry {
+  --chance-color: var(--ss-dry);
+}
+
+.tone-wet {
+  --chance-color: var(--ss-wet);
+}
+
+.ss-chance-bar.past {
+  opacity: 0.4;
+}
+
+.ss-chance-bar.hover,
+.ss-chance-bar.current {
+  filter: brightness(0.8);
 }
 
 /* Weekly bars. */
@@ -1565,6 +1786,25 @@
   font-size: 0.97rem;
 }
 
+/* Ensemble: the share of members with this spell, on its own line under the dates. */
+.ss-spell-chance {
+  grid-column: 2 / -1;
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(47, 63, 208, 0.1);
+  color: #2f3fd0;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.ss-spell.extreme {
+  grid-template-columns: minmax(0, 1fr) auto;
+  box-shadow:
+    inset 3px 0 0 var(--ss-extreme),
+    var(--map-card-shadow);
+}
+
 .ss-spell-note {
   margin: 8px 2px 0;
   color: var(--muted);
@@ -1840,6 +2080,11 @@
 .ss-drawer.ss-layer-onset {
   --ss-layer-color: var(--ss-onset);
   --ss-layer-soft: var(--ss-onset-soft);
+}
+
+.ss-drawer.ss-layer-extreme_rain {
+  --ss-layer-color: var(--ss-extreme);
+  --ss-layer-soft: var(--ss-extreme-soft);
 }
 
 .ss-drawer .drawer-header {
@@ -2299,6 +2544,58 @@
   gap: 8px;
 }
 
+.ss-stat-group {
+  display: grid;
+  gap: 12px;
+}
+
+/* "About this data": model, checkpoint and sampler behind the forecast. */
+.ss-data-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0 4px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.ss-data-list dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ss-data-list dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.ss-data-list code {
+  font-size: 0.8rem;
+}
+
+.ss-data-path {
+  word-break: break-all;
+}
+
+.ss-data-note {
+  margin: 10px 4px 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 480px) {
+  .ss-data-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .ss-data-list dd {
+    margin-bottom: 6px;
+  }
+}
+
 /* Actions pinned to the bottom of the drawer. */
 .ss-drawer-footer {
   justify-content: flex-start;
@@ -2673,6 +2970,10 @@
     --chip-color: var(--ss-dry);
   }
 
+  .ss-chip-extreme_rain {
+    --chip-color: var(--ss-extreme);
+  }
+
   .ss-chip-wet_spell_days {
     --chip-color: var(--ss-wet);
   }
@@ -2890,4 +3191,207 @@
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 4px;
   box-shadow: var(--map-card-shadow);
+}
+
+/* Ensemble statistic (Mean / Median / Chance) --------------------------------
+   One switch in three places: the side panel, the drawer (right above the charts it drives) and the
+   phone options. Each says what the current choice means in one line. */
+
+.ss-stat-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.ss-stat-group .ss-stat-note {
+  padding-left: 2px;
+}
+
+.ss-stat-compact {
+  display: grid;
+  gap: 8px;
+}
+
+.ss-stat-compact-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The compact pill switch, outside the phone layout too (the drawer uses it on desktop). */
+.ss-stat-compact .ss-mini-segmented {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--map-panel-surface-soft);
+  box-shadow: var(--neo-inset-soft);
+}
+
+.ss-stat-compact .ss-mini-segmented button {
+  flex: 1;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.ss-stat-compact .ss-mini-segmented button:hover:not([aria-checked="true"]) {
+  color: var(--ink);
+}
+
+.ss-stat-compact .ss-mini-segmented button[aria-checked="true"] {
+  background: var(--map-panel-surface-strong);
+  box-shadow: var(--neo-raised-tight);
+  color: var(--ink);
+}
+
+.ss-stat-compact .ss-mini-segmented button:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: 1px;
+}
+
+.ss-stat-amounts {
+  flex: 0 1 auto;
+}
+
+/* In the drawer the switch sits between the headline and the first chart. */
+.ss-drawer-body > .ss-stat-compact {
+  padding: 2px 4px 0;
+}
+
+/* Phones: the options sheet stacks the label above the switch. */
+.ss-option-row.ss-option-row-stack {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.ss-ensemble-hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ss-ensemble-hint .ss-link-button {
+  font-size: inherit;
+  cursor: pointer;
+}
+
+/* Dock: which statistic the map shows, above the legend. */
+.ss-dock-stat {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* Charts redraw gently when the statistic, period or place changes. */
+@keyframes ss-chart-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ss-chart {
+  animation: ss-chart-in 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-chart {
+    animation: none;
+  }
+}
+
+/* Chance bars use the map's ramp, so the legend swatch shows the ramp too. */
+.tone-rainy .ss-frame-legend .chance::before,
+.tone-rain .ss-frame-legend .chance::before {
+  width: 28px;
+  background: linear-gradient(90deg, #cfeefa, #9bd9f2, #5cbbe6, #2f96d4, #3e4ca8);
+}
+
+.tone-extreme .ss-frame-legend .chance::before {
+  width: 28px;
+  background: linear-gradient(90deg, #fde68a, #fbbf24, #f97316, #dc2626, #7e22ce);
+}
+
+/* The week on the map is outlined, so it still stands out when bars are coloured by chance. */
+.ss-week.current .ss-week-bar {
+  stroke: #12324a;
+  stroke-width: 1.5;
+}
+
+.ss-frame-legend .week-current::before {
+  box-shadow: inset 0 0 0 1.5px #12324a;
+}
+
+/* The amount a Chance view counts, drawn across the member boxes. */
+.ss-chart-threshold.ss-amount-line {
+  stroke: #12324a;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.ss-frame-legend .amount-line::before {
+  border-top-color: #12324a;
+}
+
+/* Drawer cards: one compact title per chart (the long description lives in the chart's caption for
+   screen readers), so the charts read as one group before the advice. */
+.ss-drawer .ss-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+
+.ss-drawer .ss-section-heading h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  letter-spacing: -0.005em;
+}
+
+.ss-section-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* Chart titles: the title in bold, the period it covers in small grey type beside it. */
+.ss-frame-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px 8px;
+}
+
+.ss-frame-title strong {
+  font-weight: 800;
+}
+
+.ss-frame-period {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
 }

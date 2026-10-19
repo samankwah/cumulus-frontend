@@ -407,7 +407,7 @@ test("hovering a region shows its area value instantly", async ({ page }) => {
   await region.hover({ force: true });
   const tooltip = page.locator(".leaflet-tooltip").last();
   await expect(tooltip).toContainText(/\d+(\.\d)? mm/);
-  await expect(tooltip).toContainText("Area mean");
+  await expect(tooltip).toContainText("area mean");
 });
 
 test("deep links restore the layer and the selected area", async ({ page }) => {

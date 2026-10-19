@@ -3,10 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { aggregationLabel, availableLayers, formatInitTime, formatIssueDate, LAYER_FALLBACK_LABELS, LAYER_SHORT_LABELS } from "@/lib/subseasonal";
+import {
+  aggregationLabel,
+  availableLayers,
+  formatInitTime,
+  formatIssueDate,
+  LAYER_FALLBACK_LABELS,
+  LAYER_SHORT_LABELS,
+} from "@/lib/subseasonal";
 import type { SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
 import { ForecastTimeline } from "@/components/subseasonal/forecast-timeline";
+import { EnsembleHint, StatControls } from "@/components/subseasonal/stat-controls";
 import { SteppedLegend } from "@/components/subseasonal/stepped-legend";
 
 function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
@@ -23,6 +31,8 @@ function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
       return `≥${thresholds.dry_spell_min_days} dry days`;
     case "wet_spell_days":
       return `≥${thresholds.wet_spell_min_days} wet days`;
+    case "extreme_rain":
+      return `≥${thresholds.extreme_rain_mm ?? 50} mm a day`;
     case "onset":
       return "Start of rains";
   }
@@ -35,6 +45,7 @@ const LAYER_SUMMARIES: Record<SubseasonalLayerKey, string> = {
   wet_spell_days: "Days in long stretches of steady rain.",
   dry_spell_days: "Days in long stretches with little or no rain.",
   rainy_days: "How many days will have rain.",
+  extreme_rain: "Chance of a very wet day that could bring flooding.",
 };
 
 /** Small stroke glyphs for the layer cards, drawn in each layer's colour. */
@@ -59,6 +70,12 @@ const LAYER_ICONS: Record<SubseasonalLayerKey, ReactNode> = {
       <path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3" />
     </>
   ),
+  extreme_rain: (
+    <>
+      <path d="M6 11.5a3.6 3.6 0 0 1-.4-7.2 4.6 4.6 0 0 1 8.8 1.2 3 3 0 0 1-.4 6" />
+      <path d="M10.8 9.5 8.6 13.4h3l-2 4" />
+    </>
+  ),
   rainy_days: (
     <>
       <rect x="3" y="4.5" width="14" height="12.5" rx="2.5" />
@@ -75,7 +92,7 @@ export function RunBadge({ state }: { state: SubseasonalState }) {
   }
   return (
     <div className="ss-run" data-testid="subseasonal-run">
-      <span className="ss-run-model">{run.model_label}</span>
+      <ModelPicker state={state} />
       <IssueDatePicker state={state} />
       {state.activeRunId && run.run_id !== state.activeRunId ? (
         // An earlier issue chosen on purpose: say so rather than warn that it is old.
@@ -88,6 +105,45 @@ export function RunBadge({ state }: { state: SubseasonalState }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The forecast model (IFS-UNet, IFS-Diffusion, Aurora...). A pill in the run badge; when more than
+ * one model has runs it is also the picker, a native select laid over the pill like the issue date.
+ */
+export function ModelPicker({ state, testId = "ss-model" }: { state: SubseasonalState; testId?: string }) {
+  const { run, models } = state;
+  if (!run) {
+    return null;
+  }
+  // A picker once a second model is configured; models without runs yet are listed but disabled.
+  const choosable = models.length > 1;
+  const current = models.find((item) => item.id === state.model);
+  return (
+    <span
+      className={`ss-run-model${choosable ? " choosable" : ""}`}
+      title={`${current?.source_label ?? run.source_label}${choosable ? ". Choose another model." : ""}`}
+      data-testid={choosable ? undefined : testId}
+    >
+      {run.model_label}
+      {(run.members ?? 1) > 1 ? <small className="ss-run-members">×{run.members}</small> : null}
+      {choosable ? (
+        <>
+          <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+            <path d="m6 8 4 4 4-4" />
+          </svg>
+          <select value={state.model ?? ""} data-testid={testId} aria-label="Forecast model" onChange={(event) => state.selectModel(event.target.value)}>
+            {models.map((item) => (
+              <option key={item.id} value={item.id} disabled={!item.available}>
+                {item.label}
+                {!item.available ? " · data coming soon" : (item.members ?? 1) > 1 ? ` · ensemble of ${item.members}` : " · single run"}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : null}
+    </span>
   );
 }
 
@@ -172,8 +228,8 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
           <div className={`ss-layer-grid count-${availableLayers(run).length}`} role="radiogroup" aria-labelledby="ss-layer-label">
             {availableLayers(run).map((layer, position, all) => {
               const selected = state.layer === layer;
-              // The three narrower cards of the uneven grid use the short names.
-              const narrow = all.length === 5 && position >= 2;
+              // Narrow cards use the short names: the bottom three of the uneven 2 + 3 grid, or all of 3 + 3.
+              const narrow = all.length === 6 || (all.length === 5 && position >= 2);
               return (
                 <button
                   key={layer}
@@ -234,6 +290,9 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
           </div>
         </div>
       ) : null}
+
+      <EnsembleHint state={state} />
+      <StatControls state={state} variant="panel" />
     </>
   );
 }
@@ -301,6 +360,14 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
       </div>
       {isOptionsOpen ? (
         <div className="ss-mobile-options" id="ss-mobile-options">
+          {state.models.length > 1 ? (
+            <div className="ss-option-row">
+              <span className="ss-option-label">Model</span>
+              <div className="ss-run ss-run-inline">
+                <ModelPicker state={state} testId="ss-mmodel" />
+              </div>
+            </div>
+          ) : null}
           <div className="ss-option-row">
             <span className="ss-option-label">Issued</span>
             <div className="ss-run ss-run-inline">
@@ -325,6 +392,12 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
                   </button>
                 ))}
               </div>
+            </div>
+          ) : null}
+          {state.stat ? (
+            <div className="ss-option-row ss-option-row-stack">
+              <span className="ss-option-label">Show</span>
+              <StatControls state={state} variant="compact" />
             </div>
           ) : null}
           <div className="ss-option-row">
@@ -436,7 +509,18 @@ function DockBody({ state }: { state: SubseasonalState }) {
           isPlaying={state.isPlaying}
           onTogglePlaying={state.togglePlaying}
           isBusy={layer.index !== state.index}
+          values={layer.timeline}
+          unit={layer.timeline_unit}
         />
+      ) : null}
+      {layer.statistic === "median" || layer.statistic === "mean" || (layer.statistic === "probability" && layer.layer === "rainfall") ? (
+        <p className="ss-dock-stat" data-testid="ss-dock-stat">
+          {layer.statistic === "median"
+            ? `Ensemble median of ${layer.members} members`
+            : layer.statistic === "mean"
+              ? `Ensemble mean of ${layer.members} members`
+              : `Chance of ${layer.threshold_mm ?? ""} mm or more · share of ${layer.members} members`}
+        </p>
       ) : null}
       <SteppedLegend layer={layer} />
       {state.layerError ? (

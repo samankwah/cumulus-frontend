@@ -104,7 +104,7 @@
   outline-offset: 2px;
 }
 
-/* The native select covers the pill: the pill is what shows, the select is what opens. */
+/* (Legacy) a native select laid over a pill. */
 .ss-run-model select,
 .ss-run-issue select {
   position: absolute;
@@ -3422,4 +3422,164 @@
   color: #8a4b00;
   font-size: 0.84rem;
   font-weight: 700;
+}
+
+/* Pill menus (model and issue date) ---------------------------------------------
+   The pill stays as it was; it opens a small card in the panel's own style instead of the browser's
+   native list: name in ink, a quiet detail line, a check on the current choice. */
+.ss-pill-menu {
+  position: relative;
+}
+
+.ss-pill-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: inherit;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.ss-pill-trigger:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: 4px;
+  border-radius: 999px;
+}
+
+.ss-pill-chevron {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 160ms ease;
+}
+
+.ss-pill-menu.open .ss-pill-chevron {
+  transform: rotate(180deg);
+}
+
+.ss-pill-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 1200;
+  display: grid;
+  gap: 2px;
+  min-width: 248px;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 16px;
+  background: var(--map-panel-surface-strong);
+  box-shadow:
+    0 18px 40px rgba(24, 33, 43, 0.18),
+    0 2px 6px rgba(24, 33, 43, 0.08);
+  color: var(--ink);
+  letter-spacing: normal;
+  text-transform: none;
+  animation: ss-pill-in 140ms ease-out;
+}
+
+.ss-pill-list.align-start {
+  left: -4px;
+}
+
+.ss-pill-list.align-end {
+  right: -4px;
+}
+
+@keyframes ss-pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ss-pill-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px 9px 12px;
+  border-radius: 11px;
+  cursor: pointer;
+  outline: none;
+}
+
+.ss-pill-option.active {
+  background: var(--map-panel-surface-soft);
+}
+
+.ss-pill-option:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-teal);
+}
+
+.ss-pill-option.disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ss-pill-option-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ss-pill-option-text strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ss-pill-option.selected .ss-pill-option-text strong {
+  color: var(--accent-strong);
+}
+
+.ss-pill-option-text small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.ss-pill-option-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fff1d6;
+  color: #8a4b00;
+  font-size: 0.64rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ss-pill-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-pill-list {
+    animation: none;
+  }
 }

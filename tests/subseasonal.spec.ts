@@ -372,11 +372,13 @@ test("the forecast issue date can be changed and keeps the shown day", async ({ 
   const { requests } = await mockSubseasonal(page, { onset: true, issueDates: true });
   await page.goto("/?day=14", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("timeline-current")).toHaveText("Thu 8 Oct");
-  const picker = page.getByTestId("ss-issue-date");
-  await expect(picker.locator("option")).toHaveCount(2);
-  await expect(picker.locator("option").first()).toHaveText("Fri 25 Sep 2026 · latest");
+  await page.getByTestId("ss-issue-date").click();
+  const menu = page.getByTestId("ss-issue-date-menu");
+  await expect(menu.getByRole("option")).toHaveCount(2);
+  await expect(menu.getByRole("option").first()).toContainText("Fri 25 Sep 2026");
+  await expect(menu.getByRole("option").first()).toContainText("Latest");
 
-  await picker.selectOption(EARLIER_RUN_ID);
+  await page.getByTestId(`ss-issue-date-option-${EARLIER_RUN_ID}`).click();
   await expect(page).toHaveURL(new RegExp(`run=${EARLIER_RUN_ID}`));
   await expect(page.getByTestId("timeline-current")).toHaveText("Thu 8 Oct");
   await expect(page).toHaveURL(/day=21/);
@@ -386,7 +388,7 @@ test("the forecast issue date can be changed and keeps the shown day", async ({ 
 
   // A shared link opens the same issue date.
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("ss-issue-date")).toHaveValue(EARLIER_RUN_ID);
+  await expect(page.getByTestId("ss-issue-date")).toHaveAttribute("data-value", EARLIER_RUN_ID);
 });
 
 test("a backend without the onset layer hides it, and an onset link falls back to rainfall", async ({ page }) => {

@@ -141,7 +141,7 @@ function statHero(series: SubseasonalSeries, period: { aggregation: SubseasonalA
     label: `Chance of ${amount} mm or more · ${when}`,
     value: String(Math.round(chance ?? 0)),
     unit: "%",
-    context: series.kind === "point" ? `${membersAtLeast(members, amount)} members reach ${amount} mm` : `Average over the area's ${series.cell_count} grid cells, as on the map`,
+    context: series.kind === "point" ? `${membersAtLeast(members, amount)} members reach ${amount} mm` : "Area average, as on the map",
     whole: `Median ${formatAmount(medianOf(members), "mm")} · mean ${formatAmount(mean, "mm")}`,
   };
 }
@@ -744,7 +744,7 @@ function layerSections({
     const threshold = series.thresholds.extreme_rain_mm ?? 50;
     const ensemble = isEnsemble(series);
     const share =
-      ensemble || series.kind !== "point" ? sentenceCase(chanceBasis(series)) : "Single run: 100% where it forecasts it";
+      ensemble || series.kind !== "point" ? sentenceCase(chanceBasis(series)) : "Single run (0 or 100%)";
     const weekly = weeklyExtremeChance(series, threshold);
     const weekChart = (
       <WeeklyChart

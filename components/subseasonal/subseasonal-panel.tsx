@@ -15,7 +15,7 @@ import type { SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasona
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
 import { ForecastTimeline } from "@/components/subseasonal/forecast-timeline";
 import { PillMenu } from "@/components/subseasonal/pill-menu";
-import { EnsembleHint, StatControls } from "@/components/subseasonal/stat-controls";
+import { StatControls } from "@/components/subseasonal/stat-controls";
 import { SteppedLegend } from "@/components/subseasonal/stepped-legend";
 
 function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
@@ -303,7 +303,6 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
         </div>
       ) : null}
 
-      <EnsembleHint state={state} />
       <StatControls state={state} variant="panel" />
     </>
   );

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk } from "next/font/google";
 
+import { DEFAULT_SITE_TEXT } from "@/lib/content/site-content";
+
 import "leaflet/dist/leaflet.css";
 
 import "./globals.css";
@@ -12,8 +14,8 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Cumulus · Ghana Forecast Map",
-  description: "Near-real-time Ghana seasonal agro-climate map powered by published Cumulus seasonal products.",
+  title: DEFAULT_SITE_TEXT.title,
+  description: DEFAULT_SITE_TEXT.description,
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },

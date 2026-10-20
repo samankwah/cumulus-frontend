@@ -2,21 +2,11 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
+import { fillTemplate } from "@/lib/content/advisory-messages";
+import { useSiteContent } from "@/lib/content/content-context";
 import { formatRange } from "@/lib/subseasonal";
-import { ADVISORY_GROUP_LABELS, CROP_KEYS, CROPS } from "@/lib/subseasonal-advisory";
-import type { AdvisoryAction, AdvisoryGroup, Confidence, CropKey, SubseasonalAdvisory } from "@/lib/subseasonal-advisory";
-
-const CONFIDENCE_LABELS: Record<Confidence, string> = {
-  likely: "Likely",
-  possible: "Possible",
-  outlook: "Outlook",
-};
-
-const CONFIDENCE_HINTS: Record<Confidence, string> = {
-  likely: "Within the next 10 days: the forecast is most reliable here.",
-  possible: "10–21 days ahead: timing may shift by a few days.",
-  outlook: "More than 3 weeks ahead: treat as an early signal only.",
-};
+import { cropFor } from "@/lib/subseasonal-advisory";
+import type { AdvisoryAction, AdvisoryGroup, CropKey, SubseasonalAdvisory } from "@/lib/subseasonal-advisory";
 
 function ToneIcon({ tone }: { tone: SubseasonalAdvisory["tone"] }) {
   if (tone === "low") {
@@ -39,6 +29,9 @@ function CropPicker({ crop, onChange }: { crop: CropKey; onChange: (crop: CropKe
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+  const { advisory: content } = useSiteContent();
+  const label = cropFor(content, crop).label;
+  const pickerLabel = content.messages["panel.crop"];
 
   useEffect(() => {
     if (!isOpen) {
@@ -73,17 +66,17 @@ function CropPicker({ crop, onChange }: { crop: CropKey; onChange: (crop: CropKe
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-controls={isOpen ? menuId : undefined}
-        aria-label={`Crop: ${CROPS[crop].label}`}
+        aria-label={`${pickerLabel}: ${label}`}
         onClick={() => setIsOpen((open) => !open)}
       >
-        {CROPS[crop].label}
+        {label}
         <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
           <path d="m6 8 4 4 4-4" />
         </svg>
       </button>
       {isOpen ? (
-        <div className="control-select-menu ss-crop-menu" id={menuId} role="listbox" aria-label="Crop">
-          {CROP_KEYS.map((key) => (
+        <div className="control-select-menu ss-crop-menu" id={menuId} role="listbox" aria-label={pickerLabel}>
+          {content.crops.map(({ key, label: option }) => (
             <button
               key={key}
               type="button"
@@ -96,7 +89,7 @@ function CropPicker({ crop, onChange }: { crop: CropKey; onChange: (crop: CropKe
                 buttonRef.current?.focus();
               }}
             >
-              {CROPS[key].label}
+              {option}
             </button>
           ))}
         </div>
@@ -111,10 +104,10 @@ const GROUP_ORDER: AdvisoryGroup[] = ["crops", "pests", "livestock"];
 export type AdvisoryPeriod = { from: string; to: string; label: string };
 
 /** Whether an action's dates overlap the period on the map. Standing "All period" advice spans the validity. */
-function inPeriod(item: AdvisoryAction, period: AdvisoryPeriod, validity: SubseasonalAdvisory["validity"]) {
+function inPeriod(item: AdvisoryAction, period: AdvisoryPeriod, validity: SubseasonalAdvisory["validity"], allPeriodLabel: string) {
   const today = validity?.from ?? period.from;
   const start = item.date ?? today;
-  const end = item.when === "All period" ? (validity?.to ?? start) : (item.end ?? item.date ?? start);
+  const end = item.when === allPeriodLabel ? (validity?.to ?? start) : (item.end ?? item.date ?? start);
   return start <= period.to && end >= period.from;
 }
 
@@ -137,21 +130,23 @@ export function AdvisoryPanel({
   /** The day or week on the map; its advice is highlighted. Null for the whole run. */
   period?: AdvisoryPeriod | null;
 }) {
+  const { advisory: content } = useSiteContent();
+  const { messages } = content;
   // The advice always runs from today; the day or week on the map only presses in the items that fall in it.
-  const shown = period ? advisory.actions.filter((item) => inPeriod(item, period, advisory.validity)) : [];
+  const shown = period ? advisory.actions.filter((item) => inPeriod(item, period, advisory.validity, messages["when.allPeriod"])) : [];
   const groups = GROUP_ORDER.map((group) => ({ group, actions: advisory.actions.filter((item) => item.group === group) })).filter(
     (entry) => entry.actions.length,
   );
   return (
     <article className={`ss-advisory tone-${advisory.tone}`} data-testid="subseasonal-advisory">
       <div className="ss-advisory-top">
-        <span className="section-kicker">What to do · Agromet advisory</span>
+        <span className="section-kicker">{messages["panel.kicker"]}</span>
         <CropPicker crop={crop} onChange={onCropChange} />
       </div>
       {advisory.validity ? (
         <p className="ss-advisory-valid" data-testid="subseasonal-advisory-validity">
-          Valid {formatRange(advisory.validity.from, advisory.validity.to)}
-          {issued ? ` · issued ${issued}` : ""}
+          {fillTemplate(messages["panel.valid"], { dates: formatRange(advisory.validity.from, advisory.validity.to) })}
+          {issued ? ` · ${fillTemplate(messages["panel.issued"], { date: issued })}` : ""}
         </p>
       ) : null}
 
@@ -173,13 +168,13 @@ export function AdvisoryPanel({
         <dl className="ss-advisory-brief">
           {advisory.outlook ? (
             <div>
-              <dt>Outlook</dt>
+              <dt>{messages["panel.outlook"]}</dt>
               <dd data-testid="subseasonal-advisory-outlook">{advisory.outlook}</dd>
             </div>
           ) : null}
           {advisory.impact ? (
             <div>
-              <dt>Impact</dt>
+              <dt>{messages["panel.impact"]}</dt>
               <dd data-testid="subseasonal-advisory-impact">{advisory.impact}</dd>
             </div>
           ) : null}
@@ -188,14 +183,14 @@ export function AdvisoryPanel({
 
       {groups.map(({ group, actions }) => (
         <section key={group} className={`ss-advisory-group group-${group}`} data-testid={`subseasonal-advisory-${group}`}>
-          <h4>{ADVISORY_GROUP_LABELS[group]}</h4>
+          <h4>{content.groups.labels[group]}</h4>
           <ol className="ss-advisory-actions">
             {actions.map((item) => (
               <li key={`${item.when}-${item.text}`} className={shown.includes(item) ? "in-period" : undefined}>
                 <span className="ss-action-when">{item.when}</span>
                 <span className="ss-action-text">{item.text}</span>
-                <span className={`ss-action-confidence ${item.confidence}`} title={CONFIDENCE_HINTS[item.confidence]}>
-                  {CONFIDENCE_LABELS[item.confidence]}
+                <span className={`ss-action-confidence ${item.confidence}`} title={content.confidence.hints[item.confidence]}>
+                  {content.confidence.labels[item.confidence]}
                 </span>
               </li>
             ))}

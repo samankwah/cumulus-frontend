@@ -1,3 +1,6 @@
+"use client";
+
+import { useSiteContent } from "@/lib/content/content-context";
 import { formatDay } from "@/lib/subseasonal";
 import type { SubseasonalLayerKey, SubseasonalProvenance, SubseasonalRun } from "@/lib/subseasonal";
 
@@ -29,13 +32,14 @@ export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: Subseason
   const hasModel = Boolean(provenance.model_dir || provenance.checkpoint);
   const sampler = samplerText(provenance);
   const layerDescription = run.layers.find((option) => option.layer === layer)?.description;
+  const { dataInfo, about } = useSiteContent().site;
 
   return (
     <details className="ss-fold ss-data-info" data-testid="subseasonal-data-info">
       <summary>About this data</summary>
       {run.synthetic ? (
         <p className="ss-data-demo" data-testid="ss-data-demo">
-          Demo data: a made-up ensemble for testing the views. Not a forecast.
+          {dataInfo.demoNote}
         </p>
       ) : null}
       <dl className="ss-data-list">
@@ -72,12 +76,12 @@ export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: Subseason
         <dd>{membersText(run)}</dd>
 
         <dt>Grid</dt>
-        <dd>{run.grid_resolution_degrees ?? 0.1}° (about 11 km)</dd>
+        <dd>
+          {run.grid_resolution_degrees ?? 0.1}°{dataInfo.gridNote ? ` (${dataInfo.gridNote})` : ""}
+        </dd>
 
         <dt>Observed rainfall</dt>
-        <dd>
-          None. Every value is forecast. Days shaded “Elapsed” are earlier days of this forecast, not observations.
-        </dd>
+        <dd>{dataInfo.observedRainfall}</dd>
 
         {provenance.model_dir || provenance.checkpoint_dir ? (
           <>
@@ -96,6 +100,16 @@ export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: Subseason
       </dl>
       {layerDescription ? <p className="ss-data-note">{layerDescription}</p> : null}
       {run.guidance ? <p className="ss-data-note">{run.guidance}</p> : null}
+      {about.body ? <p className="ss-data-note">{about.body}</p> : null}
+      {about.disclaimer ? <p className="ss-data-note">{about.disclaimer}</p> : null}
+      {about.contactEmail || about.contactPhone ? (
+        <p className="ss-data-note" data-testid="ss-data-contact">
+          Contact:{" "}
+          {about.contactEmail ? <a href={`mailto:${about.contactEmail}`}>{about.contactEmail}</a> : null}
+          {about.contactEmail && about.contactPhone ? " · " : null}
+          {about.contactPhone ? <a href={`tel:${about.contactPhone.replace(/\s+/g, "")}`}>{about.contactPhone}</a> : null}
+        </p>
+      ) : null}
     </details>
   );
 }

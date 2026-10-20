@@ -32,6 +32,8 @@ import {
   weeklyExtremeChance,
 } from "@/lib/subseasonal";
 import type { SpellKind, SpellStatus, StatView, SubseasonalAggregation, SubseasonalLayerKey, SubseasonalSeries } from "@/lib/subseasonal";
+import { useSiteContent } from "@/lib/content/content-context";
+import type { AdvisoryContent } from "@/lib/content/advisory-content";
 import { buildSubseasonalAdvisory, isCropKey } from "@/lib/subseasonal-advisory";
 import type { CropKey } from "@/lib/subseasonal-advisory";
 
@@ -39,18 +41,18 @@ import type { CropKey } from "@/lib/subseasonal-advisory";
 const CROP_STORAGE_KEY = "ss-advisory-crop-v2";
 
 /** The viewer's crop, remembered on this device only. */
-function useCropPreference() {
-  const [crop, setCrop] = useState<CropKey>("all");
+function useCropPreference(content: AdvisoryContent) {
+  const [crop, setCrop] = useState<CropKey>(content.crops[0]?.key ?? "all");
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(CROP_STORAGE_KEY);
-      if (isCropKey(stored)) {
+      if (isCropKey(stored, content)) {
         setCrop(stored);
       }
     } catch {
       // Storage unavailable (private mode): keep the default.
     }
-  }, []);
+  }, [content]);
   const update = useCallback((next: CropKey) => {
     setCrop(next);
     try {
@@ -961,8 +963,12 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
   const [copied, setCopied] = useState(false);
   const sheet = useSheetDrag(state.closeDrawer);
   const currentDay = state.aggregation === "daily" ? state.index : null;
-  const [crop, setCrop] = useCropPreference();
-  const advisory = useMemo(() => (series ? buildSubseasonalAdvisory(layer, series, crop) : null), [crop, layer, series]);
+  const { advisory: advisoryContent } = useSiteContent();
+  const [crop, setCrop] = useCropPreference(advisoryContent);
+  const advisory = useMemo(
+    () => (series ? buildSubseasonalAdvisory(layer, series, crop, undefined, advisoryContent) : null),
+    [advisoryContent, crop, layer, series],
+  );
   const currentWeek = state.aggregation === "weekly" ? state.index : null;
   // The day or week on the map, so the advisory can mark the advice that falls in it.
   const advisoryPeriod = useMemo(() => {

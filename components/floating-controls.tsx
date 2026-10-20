@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { useSiteContent } from "@/lib/content/content-context";
+
 import {
   forecastThemeAvailabilityReason,
   forecastThemeUnitLabel,
@@ -328,6 +330,7 @@ export function FloatingControls({
   isRefreshing: boolean;
   onRetryProduct: () => void;
 }) {
+  const { site } = useSiteContent();
   const controlsId = useId();
   const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
   const deterministicStops = isDeterministicProduct(product) ? product.color_ramp : [];
@@ -469,7 +472,7 @@ export function FloatingControls({
             <div className="brand-block">
               <span className="eyebrow">
                 {/* Cumulus is the team behind the AI forecast models. */}
-                <span className="brand-name">Cumulus</span>
+                <span className="brand-name">{site.brandName}</span>
                 <span className="brand-separator" aria-hidden="true">
                   ·
                 </span>
@@ -479,7 +482,7 @@ export function FloatingControls({
                     ? "Probability forecast artifact"
                     : "Deterministic forecast artifact"}
               </span>
-              <h1>{isSubseasonal ? "46-Day Forecast" : "Forecast Map"}</h1>
+              <h1>{isSubseasonal ? site.subseasonalHeading : "Forecast Map"}</h1>
               {isSubseasonal ? subseasonalHeader : null}
             </div>
 

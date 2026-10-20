@@ -1,5 +1,19 @@
+import { DEFAULT_ADVISORY_CONTENT } from "@/lib/content/advisory-content";
+import type {
+  AdvisoryContent,
+  AdvisoryGroup,
+  Confidence,
+  CropProfile,
+  SeasonPeriod,
+  Sector,
+  Stage,
+} from "@/lib/content/advisory-content";
+import { fillTemplate } from "@/lib/content/advisory-messages";
+import type { AdvisoryMessageId, MessageVars } from "@/lib/content/advisory-messages";
 import { formatAmount, formatDay, formatRange, todayIso } from "@/lib/subseasonal";
 import type { SubseasonalDay, SubseasonalLayerKey, SubseasonalSeries, SubseasonalSpell } from "@/lib/subseasonal";
+
+export type { AdvisoryGroup, Confidence, CropProfile } from "@/lib/content/advisory-content";
 
 /* ------------------------------------------------------------------------------------------
  * Farm advisories for the 46-day outlook.
@@ -13,6 +27,9 @@ import type { SubseasonalDay, SubseasonalLayerKey, SubseasonalSeries, Subseasona
  *                                (planting, spraying, fertilizer, drying, heavy rain, spells, end of rains).
  * The selected map layer decides which of those signals leads.
  *
+ * The thresholds, calendar, crops and every sentence come from AdvisoryContent
+ * (lib/content/advisory-content.ts), which forecasters can edit on the admin pages.
+ *
  * Planting and end-of-rains use the backend definitions (configs/advisory.yaml): onset = 20 mm in
  * 3 days with no 7-day dry run in the next 10; cessation = 14 days totalling 10 mm or less.
  * The onset layer instead follows the backend's mapped onset (series.onset: 20 mm within 3 days,
@@ -21,147 +38,20 @@ import type { SubseasonalDay, SubseasonalLayerKey, SubseasonalSeries, Subseasona
  * is indicative only.
  * ------------------------------------------------------------------------------------------ */
 
-const NORTHERN_LATITUDE = 8.0;
-const TRANSITION_LATITUDE = 7.0;
-/** Area series carry no coordinates, so regions map to GMet's sectors by name. */
-const NORTHERN_REGIONS = ["Northern", "Savannah", "North East", "Upper East", "Upper West"];
-const TRANSITION_REGIONS = ["Bono", "Bono East", "Oti"];
-
-const ONSET_WINDOW_DAYS = 3;
-const ONSET_THRESHOLD_MM = 20;
-const ONSET_GUARD_DAYS = 10;
-const ONSET_GUARD_DRY_DAYS = 7;
-const CESSATION_WINDOW_DAYS = 14;
-const CESSATION_THRESHOLD_MM = 10;
-
-const HEAVY_DAY_MM = 30;
-/** A spray or fertilizer application needs this much rain-free time after it. */
-const WASH_OFF_MM = 5;
-const SPRAY_WINDOW_DAYS = 2;
-const DRYING_WINDOW_DAYS = 3;
-/** Soil counts as moist enough to top-dress after this much rain over the previous 3 days. */
-const MOIST_SOIL_MM = 10;
-
-const LIKELY_LEAD_DAYS = 10;
-const POSSIBLE_LEAD_DAYS = 21;
-
 /* ------------------------------------------------------------------------------------ crops */
 
-export type CropKey = "all" | "maize" | "rice" | "sorghum_millet" | "legumes" | "roots_tubers" | "vegetables";
+/** A crop's key from AdvisoryContent.crops ("all", "maize", ...). */
+export type CropKey = string;
 
-type CropProfile = {
-  label: string;
-  /** Plural noun used in sentences ("dry your maize"). */
-  noun: string;
-  /** Tolerates prolonged dry spells (sorghum, millet, cassava). */
-  droughtHardy: boolean;
-  /** Tolerates standing water (lowland rice). */
-  likesWater: boolean;
-  /** Harvest happens later than the cereal harvest in the north. */
-  lateHarvest: boolean;
-  /** Most sensitive stage to water stress. */
-  criticalStage: string;
-  /** What to protect in a wet harvest. */
-  harvestRisk: string;
-  /** Pests that build up in dry weather, to watch for in a dry spell. */
-  dryPests: string;
-  /** Diseases that spread in wet weather, to scout for in a wet spell. */
-  wetDiseases: string;
-};
+export function cropFor(content: AdvisoryContent, key: CropKey): CropProfile {
+  return content.crops.find((crop) => crop.key === key) ?? content.crops[0];
+}
 
-export const CROPS: Record<CropKey, CropProfile> = {
-  // The default: advice that holds for crops in general, before a farmer picks their own.
-  all: {
-    label: "All crops",
-    noun: "crops",
-    droughtHardy: false,
-    likesWater: false,
-    lateHarvest: false,
-    criticalStage: "flowering and grain filling",
-    harvestRisk: "grain and pods mould if harvested or dried wet",
-    dryPests: "fall armyworm and aphids",
-    wetDiseases: "fungal leaf and pod diseases",
-  },
-  maize: {
-    label: "Maize",
-    noun: "maize",
-    droughtHardy: false,
-    likesWater: false,
-    lateHarvest: false,
-    criticalStage: "tasselling and silking",
-    harvestRisk: "cobs rot and grain moulds (aflatoxin) if harvested or dried wet",
-    dryPests: "fall armyworm and stem borers",
-    wetDiseases: "leaf blight and ear rot",
-  },
-  rice: {
-    label: "Rice",
-    noun: "rice",
-    droughtHardy: false,
-    likesWater: true,
-    lateHarvest: false,
-    criticalStage: "booting and flowering",
-    harvestRisk: "grain shatters and sprouts if left standing in rain",
-    dryPests: "stem borers and rice bugs",
-    wetDiseases: "rice blast and sheath blight",
-  },
-  sorghum_millet: {
-    label: "Sorghum & millet",
-    noun: "sorghum and millet",
-    droughtHardy: true,
-    likesWater: false,
-    lateHarvest: true,
-    criticalStage: "heading and grain filling",
-    harvestRisk: "heads mould and birds damage grain left in the field",
-    dryPests: "stem borers and aphids",
-    wetDiseases: "grain mould and anthracnose",
-  },
-  legumes: {
-    label: "Groundnut & cowpea",
-    noun: "groundnut and cowpea",
-    droughtHardy: false,
-    likesWater: false,
-    lateHarvest: false,
-    criticalStage: "flowering and pod filling",
-    harvestRisk: "pods mould (aflatoxin in groundnut) if dried on wet ground",
-    dryPests: "aphids and thrips",
-    wetDiseases: "leaf spot and pod rot",
-  },
-  roots_tubers: {
-    label: "Yam & cassava",
-    noun: "yam and cassava",
-    droughtHardy: true,
-    likesWater: false,
-    lateHarvest: true,
-    criticalStage: "tuber bulking",
-    harvestRisk: "tubers rot if harvested from waterlogged soil",
-    dryPests: "cassava mealybug and green mite",
-    wetDiseases: "yam anthracnose and tuber rot",
-  },
-  vegetables: {
-    label: "Vegetables",
-    noun: "vegetables",
-    droughtHardy: false,
-    likesWater: false,
-    lateHarvest: false,
-    criticalStage: "transplanting and fruit set",
-    harvestRisk: "leaf and fruit diseases spread fast in wet weather",
-    dryPests: "whiteflies, aphids and mites",
-    wetDiseases: "blight and leaf spot",
-  },
-};
-
-export const CROP_KEYS = Object.keys(CROPS) as CropKey[];
-
-export function isCropKey(value: unknown): value is CropKey {
-  return typeof value === "string" && value in CROPS;
+export function isCropKey(value: unknown, content: AdvisoryContent = DEFAULT_ADVISORY_CONTENT): value is CropKey {
+  return typeof value === "string" && content.crops.some((crop) => crop.key === value);
 }
 
 /* ---------------------------------------------------------------------------- place & season */
-
-type Sector = "north" | "transition" | "south";
-
-/** Where in the farming calendar a place is, which sets the crop stage the advice speaks to. */
-type Stage = "dry_season" | "land_prep" | "planting" | "growing" | "critical" | "harvest";
 
 type SeasonContext = {
   sector: Sector;
@@ -171,24 +61,18 @@ type SeasonContext = {
   stageLabel: string;
 };
 
-function sectorFor(series: SubseasonalSeries): Sector {
+function sectorFor(series: SubseasonalSeries, sectors: AdvisoryContent["sectors"]): Sector {
   const latitude = series.latitude ?? series.nearest_latitude;
   if (latitude !== null && latitude !== undefined) {
-    if (latitude >= NORTHERN_LATITUDE) {
+    if (latitude >= sectors.northernLatitude) {
       return "north";
     }
-    return latitude >= TRANSITION_LATITUDE ? "transition" : "south";
+    return latitude >= sectors.transitionLatitude ? "transition" : "south";
   }
   const region = series.region ?? series.name;
-  if (NORTHERN_REGIONS.includes(region)) return "north";
-  return TRANSITION_REGIONS.includes(region) ? "transition" : "south";
+  if (sectors.northernRegions.includes(region)) return "north";
+  return sectors.transitionRegions.includes(region) ? "transition" : "south";
 }
-
-const SECTOR_LABELS: Record<Sector, string> = {
-  north: "Northern sector",
-  transition: "Transition zone",
-  south: "Southern sector",
-};
 
 /** Month-day as a sortable number, e.g. 15 Aug → 815. */
 function monthDay(iso: string) {
@@ -196,58 +80,40 @@ function monthDay(iso: string) {
 }
 
 /**
- * Season calendar. North: one season (rains May–Oct, cessation reference ~5 Nov).
- * South and transition: major season Mar–Jul, short break, minor season mid-Aug–Nov
- * (cessation reference ~7 Nov), per configs/seasonal_map.yaml profiles.
+ * The calendar entry in force on a date: the last one starting on or before it, or, before the
+ * year's first entry, the last entry (carried over from the previous year).
  */
-function seasonFor(sector: Sector, iso: string, crop: CropProfile): Omit<SeasonContext, "sector" | "sectorLabel"> {
-  const md = monthDay(iso);
-  const stageLabels: Record<Stage, string> = {
-    dry_season: "dry season",
-    land_prep: "land preparation",
-    planting: "planting time",
-    growing: "crop growing",
-    critical: crop.criticalStage,
-    harvest: "harvest time",
-  };
-  const make = (season: string, stage: Stage) => ({ season, stage, stageLabel: stageLabels[stage] });
-
-  if (sector === "north") {
-    if (crop.lateHarvest) {
-      if (md >= 1101) return make("End of the main season", "harvest");
-      if (md >= 801) return make("Main season", "critical");
-    } else {
-      if (md >= 1201) return make("Dry season", "dry_season");
-      if (md >= 901) return make(md >= 1001 ? "End of the main season" : "Main season", "harvest");
-    }
-    if (md >= 801) return make("Main season", "critical");
-    if (md >= 616) return make("Main season", "growing");
-    if (md >= 501) return make("Start of the main season", "planting");
-    if (md >= 315) return make("Before the rains", "land_prep");
-    return make("Dry season", "dry_season");
+function periodOn(calendar: SeasonPeriod[], md: number): SeasonPeriod | undefined {
+  const sorted = [...calendar].sort((a, b) => a.from.localeCompare(b.from));
+  let current = sorted[sorted.length - 1];
+  for (const period of sorted) {
+    if (monthDay(`0000-${period.from}`) <= md) current = period;
   }
-  if (md >= 1116 || md < 201) return make("Dry season", crop.lateHarvest && md >= 1116 ? "harvest" : "dry_season");
-  if (md < 301) return make("Before the major season", "land_prep");
-  if (md < 501) return make("Major season", "planting");
-  if (md < 616) return make("Major season", "growing");
-  if (md < 801) return make("End of the major season", crop.lateHarvest ? "growing" : "harvest");
-  if (md < 1001) return make("Minor season", "planting");
-  if (md < 1101) return make("Minor season", "critical");
-  return make("End of the minor season", "harvest");
+  return current;
+}
+
+/** Season calendar: see AdvisoryContent.calendar. The transition zone follows the southern one. */
+function seasonFor(
+  content: AdvisoryContent,
+  sector: Sector,
+  iso: string,
+  crop: CropProfile,
+): Omit<SeasonContext, "sector" | "sectorLabel"> {
+  const { calendar } = content;
+  const table =
+    sector === "north"
+      ? crop.lateHarvest
+        ? calendar.northLateHarvest
+        : calendar.north
+      : crop.lateHarvest
+        ? calendar.southLateHarvest
+        : calendar.south;
+  const period: Pick<SeasonPeriod, "season" | "stage"> = periodOn(table, monthDay(iso)) ?? { season: "", stage: "growing" };
+  const stageLabel = period.stage === "critical" ? crop.criticalStage : content.stageLabels[period.stage];
+  return { season: period.season, stage: period.stage, stageLabel };
 }
 
 /* -------------------------------------------------------------------------- forecast windows */
-
-export type Confidence = "likely" | "possible" | "outlook";
-
-/** Advice groups, as in an agrometeorological bulletin: crops, pests and diseases, livestock and water. */
-export type AdvisoryGroup = "crops" | "pests" | "livestock";
-
-export const ADVISORY_GROUP_LABELS: Record<AdvisoryGroup, string> = {
-  crops: "Crops",
-  pests: "Pests & disease",
-  livestock: "Livestock & water",
-};
 
 export type AdvisoryAction = {
   /** Short date label ("Thu 9 Oct", "9–11 Oct") or "Now". */
@@ -284,32 +150,55 @@ export type SubseasonalAdvisory = {
 
 type Run = { start: SubseasonalDay; end: SubseasonalDay; days: number };
 
-function rain(day: SubseasonalDay | undefined) {
-  return day?.value ?? 0;
+/** Writes a message from its template, with the chosen crop's words always available. */
+type Writer = (id: AdvisoryMessageId, vars?: MessageVars) => string;
+
+function writerFor(content: AdvisoryContent, crop: CropProfile): { t: Writer; setStage: (stage: string) => void } {
+  const base: MessageVars = {
+    crop: crop.noun,
+    cropLabel: crop.label,
+    criticalStage: crop.criticalStage,
+    harvestRisk: crop.harvestRisk,
+    dryPests: crop.dryPests,
+    wetDiseases: crop.wetDiseases,
+  };
+  return {
+    t: (id, vars) => fillTemplate(content.messages[id] ?? "", vars ? { ...base, ...vars } : base),
+    setStage: (stage) => {
+      base.stage = stage;
+    },
+  };
 }
 
-/** Capitalises a phrase that starts a sentence ("cobs rot…" → "Cobs rot…"). */
-function sentence(text: string) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
+function rain(day: SubseasonalDay | undefined) {
+  return day?.value ?? 0;
 }
 
 function shortRange(start: string, end: string) {
   return start === end ? formatDay(start, "weekday") : formatRange(start, end);
 }
 
+/** Marks standing advice ("Now"): it has no date even when it keys on a forecast day. */
+const NOW = Symbol("now");
+type When = string | typeof NOW;
+
 class Forecast {
   readonly days: SubseasonalDay[];
   readonly wetDayMm: number;
+  readonly limits: AdvisoryContent["thresholds"];
+  readonly t: Writer;
 
-  constructor(series: SubseasonalSeries, today: string) {
+  constructor(series: SubseasonalSeries, today: string, limits: AdvisoryContent["thresholds"], t: Writer) {
     this.days = series.days.filter((day) => day.date >= today);
     this.wetDayMm = series.thresholds.wet_day_mm;
+    this.limits = limits;
+    this.t = t;
   }
 
   confidence(day: SubseasonalDay): Confidence {
     const lead = this.days.indexOf(day);
-    if (lead < LIKELY_LEAD_DAYS) return "likely";
-    return lead < POSSIBLE_LEAD_DAYS ? "possible" : "outlook";
+    if (lead < this.limits.likelyLeadDays) return "likely";
+    return lead < this.limits.possibleLeadDays ? "possible" : "outlook";
   }
 
   total(count: number) {
@@ -338,27 +227,29 @@ class Forecast {
 
   /** Backend onset rule applied from today: a planting rain that is not followed by a long dry run. */
   plantingRain(): { day: SubseasonalDay; total: number; falseStartRisk: boolean } | null {
-    for (let index = 0; index + ONSET_WINDOW_DAYS <= this.days.length; index += 1) {
-      const window = this.days.slice(index, index + ONSET_WINDOW_DAYS);
+    const { onsetWindowDays, onsetThresholdMm, onsetGuardDays, onsetGuardDryDays } = this.limits;
+    for (let index = 0; index + onsetWindowDays <= this.days.length; index += 1) {
+      const window = this.days.slice(index, index + onsetWindowDays);
       const total = window.reduce((sum, day) => sum + rain(day), 0);
-      if (total < ONSET_THRESHOLD_MM) continue;
-      const guard = this.days.slice(index, index + ONSET_GUARD_DAYS);
+      if (total < onsetThresholdMm) continue;
+      const guard = this.days.slice(index, index + onsetGuardDays);
       let run = 0;
       let longest = 0;
       guard.forEach((day) => {
         run = rain(day) < this.wetDayMm ? run + 1 : 0;
         longest = Math.max(longest, run);
       });
-      return { day: this.days[index], total, falseStartRisk: longest >= ONSET_GUARD_DRY_DAYS };
+      return { day: this.days[index], total, falseStartRisk: longest >= onsetGuardDryDays };
     }
     return null;
   }
 
   /** Backend cessation rule: first 14-day stretch with 10 mm or less. */
   endOfRains(): SubseasonalDay | null {
-    for (let index = 0; index + CESSATION_WINDOW_DAYS <= this.days.length; index += 1) {
-      const total = this.days.slice(index, index + CESSATION_WINDOW_DAYS).reduce((sum, day) => sum + rain(day), 0);
-      if (total <= CESSATION_THRESHOLD_MM) return this.days[index];
+    const { cessationWindowDays, cessationThresholdMm } = this.limits;
+    for (let index = 0; index + cessationWindowDays <= this.days.length; index += 1) {
+      const total = this.days.slice(index, index + cessationWindowDays).reduce((sum, day) => sum + rain(day), 0);
+      if (total <= cessationThresholdMm) return this.days[index];
     }
     return null;
   }
@@ -368,7 +259,7 @@ class Forecast {
     for (let index = 0; index < this.days.length - 2; index += 1) {
       const before = this.days.slice(Math.max(0, index - 3), index + 1).reduce((sum, day) => sum + rain(day), 0);
       const after = this.days.slice(index + 1, index + 3);
-      if (before >= MOIST_SOIL_MM && after.every((day) => rain(day) < HEAVY_DAY_MM / 2)) {
+      if (before >= this.limits.moistSoilMm && after.every((day) => rain(day) < this.limits.heavyDayMm / 2)) {
         return this.days[index];
       }
     }
@@ -381,7 +272,7 @@ class Forecast {
   }
 
   heavyDays() {
-    return this.days.filter((day) => rain(day) >= HEAVY_DAY_MM);
+    return this.days.filter((day) => rain(day) >= this.limits.heavyDayMm);
   }
 
   spells(series: SubseasonalSeries, kind: "dry" | "wet") {
@@ -403,7 +294,9 @@ class Forecast {
     if (!this.ongoing(spell)) {
       return shortRange(spell.start_date, spell.end_date);
     }
-    return spell.end_date === this.days[0]?.date ? "Today" : `Until ${formatDay(spell.end_date, "short")}`;
+    return spell.end_date === this.days[0]?.date
+      ? this.t("when.today")
+      : this.t("when.until", { date: formatDay(spell.end_date, "short") });
   }
 }
 
@@ -419,199 +312,186 @@ type Draft = {
 function action(
   forecast: Forecast,
   day: SubseasonalDay | null,
-  when: string,
+  when: When,
   text: string,
   group: AdvisoryGroup = "crops",
   end: string | null = null,
 ): AdvisoryAction {
-  return { when, date: day && when !== "Now" ? day.date : null, text, confidence: day ? forecast.confidence(day) : "likely", group, end };
+  return {
+    when: when === NOW ? forecast.t("when.now") : when,
+    date: day && when !== NOW ? day.date : null,
+    text,
+    confidence: day ? forecast.confidence(day) : "likely",
+    group,
+    end,
+  };
+}
+
+/** "From 8 Oct". */
+function fromLabel(forecast: Forecast, iso: string) {
+  return forecast.t("when.from", { date: formatDay(iso, "short") });
+}
+
+/** "Before 8 Oct". */
+function beforeLabel(forecast: Forecast, iso: string) {
+  return forecast.t("when.before", { date: formatDay(iso, "short") });
 }
 
 /** Long dry stretches read as "From 8 Oct" rather than a month-long range. */
-function runLabel(run: Run) {
-  return run.days > 7 ? `From ${formatDay(run.start.date, "short")}` : shortRange(run.start.date, run.end.date);
+function runLabel(forecast: Forecast, run: Run) {
+  return run.days > 7 ? fromLabel(forecast, run.start.date) : shortRange(run.start.date, run.end.date);
 }
 
 /** Spell dates for the "why" list: "8–12 Oct", or "under way until 12 Oct". */
 function spellFact(forecast: Forecast, spell: SubseasonalSpell) {
-  return forecast.ongoing(spell) ? `until ${formatDay(spell.end_date, "short")}` : shortRange(spell.start_date, spell.end_date);
+  return forecast.ongoing(spell)
+    ? forecast.t("spell.until", { date: formatDay(spell.end_date, "short") })
+    : shortRange(spell.start_date, spell.end_date);
 }
 
 /** Windows for spraying/weeding/harvest, shared by several layers. */
-function fieldWorkActions(forecast: Forecast, crop: CropProfile, stage: Stage): AdvisoryAction[] {
-  const sprayRuns = forecast.dryRuns(WASH_OFF_MM, SPRAY_WINDOW_DAYS).slice(0, 2);
+function fieldWorkActions(forecast: Forecast, stage: Stage): AdvisoryAction[] {
+  const { t, limits } = forecast;
+  const sprayRuns = forecast.dryRuns(limits.washOffMm, limits.sprayWindowDays).slice(0, 2);
   const actions: AdvisoryAction[] = [];
   if (stage === "harvest") {
-    const drying = forecast.dryRuns(forecast.wetDayMm, DRYING_WINDOW_DAYS)[0];
+    const drying = forecast.dryRuns(forecast.wetDayMm, limits.dryingWindowDays)[0];
     if (drying) {
       actions.push(
         action(
           forecast,
           drying.start,
-          runLabel(drying),
-          drying.days > 7
-            ? `Harvest and dry ${crop.noun}. Dry weather lasts ${drying.days}+ days.`
-            : `Harvest and dry ${crop.noun}. ${drying.days} dry days in a row.`,
+          runLabel(forecast, drying),
+          drying.days > 7 ? t("advice.harvestDryLong", { days: drying.days }) : t("advice.harvestDryShort", { days: drying.days }),
         ),
       );
-      const nextDrying = forecast.dryRuns(forecast.wetDayMm, DRYING_WINDOW_DAYS)[1];
+      const nextDrying = forecast.dryRuns(forecast.wetDayMm, limits.dryingWindowDays)[1];
       // Once the rains are ending every day dries produce; a second window adds nothing.
       if (nextDrying && !forecast.endOfRains()) {
-        actions.push(action(forecast, nextDrying.start, runLabel(nextDrying), "Second dry window, if you miss the first.", "crops", nextDrying.end.date));
+        actions.push(
+          action(forecast, nextDrying.start, runLabel(forecast, nextDrying), t("advice.secondDryWindow"), "crops", nextDrying.end.date),
+        );
       }
     }
   }
   // At harvest a drying window already covers field work; fall back to short rain-free gaps.
   if (sprayRuns.length && (stage !== "harvest" || !actions.length)) {
     const first = sprayRuns[0];
+    const next = sprayRuns[1] ? ` ${t("advice.nextDryDays", { dates: runLabel(forecast, sprayRuns[1]) })}` : "";
     actions.push(
-      action(
-        forecast,
-        first.start,
-        runLabel(first),
-        stage === "harvest"
-          ? "Clear the field, thresh and bag dry produce."
-          : `Spray or weed on these dry days so rain does not wash chemicals off.${sprayRuns[1] ? ` Next dry days: ${runLabel(sprayRuns[1])}.` : ""}`,
-      ),
+      action(forecast, first.start, runLabel(forecast, first), stage === "harvest" ? t("advice.clearField") : `${t("advice.sprayOnDryDays")}${next}`),
     );
   }
   return actions;
 }
 
 function rainfallDraft(forecast: Forecast, crop: CropProfile, ctx: SeasonContext): Draft {
-  const twoWeeks = forecast.total(14);
-  const span = Math.min(14, forecast.days.length);
+  const { t, limits } = forecast;
+  const twoWeeks = forecast.total(limits.nearTermDays);
+  const span = Math.min(limits.nearTermDays, forecast.days.length);
   const planting = forecast.plantingRain();
   const heavy = forecast.heavyDays();
   const end = forecast.endOfRains();
   const fertilizer = forecast.fertilizerDay();
-  const signals = [`${formatAmount(twoWeeks, "mm")} forecast over the next ${span} days.`];
+  const signals = [t("signal.rainTotal", { amount: formatAmount(twoWeeks, "mm"), days: span })];
   const actions: AdvisoryAction[] = [];
   let tone: AdvisoryTone = "low";
   let headline: string;
 
   if (ctx.stage === "harvest") {
-    const drying = forecast.dryRuns(forecast.wetDayMm, DRYING_WINDOW_DAYS)[0];
-    headline = drying
-      ? `Harvest from ${formatDay(drying.start.date, "weekday")}`
-      : `Few dry days to harvest ${crop.noun}`;
+    const drying = forecast.dryRuns(forecast.wetDayMm, limits.dryingWindowDays)[0];
+    headline = drying ? t("headline.harvestFrom", { date: formatDay(drying.start.date, "weekday") }) : t("headline.fewDryDaysToHarvest");
     tone = drying ? "low" : "high";
-    actions.push(...fieldWorkActions(forecast, crop, "harvest"));
+    actions.push(...fieldWorkActions(forecast, "harvest"));
     if (!drying) {
-      actions.push(action(forecast, null, "Now", `Harvest ripe ${crop.noun} between showers and dry it under cover. ${sentence(crop.harvestRisk)}.`));
+      actions.push(action(forecast, null, NOW, t("advice.harvestBetweenShowers")));
     }
     if (end) {
-      actions.push(
-        action(
-          forecast,
-          end,
-          `From ${formatDay(end.date, "short")}`,
-          "The rains are ending. Plan crop residue use and dry-season storage.",
-          "crops",
-          forecast.lastDate(),
-        ),
-      );
-      signals.push(`Under ${CESSATION_THRESHOLD_MM} mm in the 14 days from ${formatDay(end.date, "weekday")} (end-of-rains signal).`);
+      actions.push(action(forecast, end, fromLabel(forecast, end.date), t("advice.rainsEnding"), "crops", forecast.lastDate()));
+      signals.push(t("signal.endOfRains", { mm: limits.cessationThresholdMm, date: formatDay(end.date, "weekday") }));
     }
   } else if (ctx.stage === "planting" || ctx.stage === "land_prep") {
     if (planting && !planting.falseStartRisk) {
-      headline = `Planting rain ${formatDay(planting.day.date, "weekday")}`;
-      actions.push(
-        action(forecast, planting.day, formatDay(planting.day.date, "weekday"), `Plant ${crop.noun} once the soil is wet to a hand's depth after this rain.`),
-      );
+      headline = t("headline.plantingRain", { date: formatDay(planting.day.date, "weekday") });
+      actions.push(action(forecast, planting.day, formatDay(planting.day.date, "weekday"), t("advice.plantAfterRain")));
     } else if (planting) {
       tone = "mid";
-      headline = "Rain comes, but a dry spell may follow";
+      headline = t("headline.falseStart");
       actions.push(
-        action(forecast, planting.day, formatDay(planting.day.date, "weekday"), `Rain comes, but ${ONSET_GUARD_DRY_DAYS}+ dry days may follow. Plant a small area only, or wait.`),
+        action(forecast, planting.day, formatDay(planting.day.date, "weekday"), t("advice.falseStart", { days: limits.onsetGuardDryDays })),
       );
     } else {
       tone = "high";
-      headline = `No planting rain for ${crop.noun} yet`;
-      actions.push(action(forecast, null, "Now", "Hold seed. Finish land preparation and ridging now."));
+      headline = t("headline.noPlantingRain");
+      actions.push(action(forecast, null, NOW, t("advice.holdSeed")));
     }
     if (planting) {
-      signals.push(`${formatAmount(planting.total, "mm")} over 3 days from ${formatDay(planting.day.date, "weekday")} (planting-rain rule: 20 mm in 3 days).`);
+      signals.push(t("signal.plantingRain", { amount: formatAmount(planting.total, "mm"), date: formatDay(planting.day.date, "weekday") }));
     }
   } else if (ctx.stage === "dry_season") {
-    headline = twoWeeks >= ONSET_THRESHOLD_MM ? "Rain expected out of season" : "Little rain expected";
-    tone = twoWeeks >= ONSET_THRESHOLD_MM ? "mid" : "low";
-    actions.push(
-      action(
-        forecast,
-        null,
-        "Now",
-        twoWeeks >= ONSET_THRESHOLD_MM
-          ? "Rain is forecast out of season. Cover stored grain and keep produce off the ground."
-          : `Irrigate ${crop.noun} on a fixed schedule. Little rain is expected.`,
-      ),
-    );
+    const wet = twoWeeks >= limits.onsetThresholdMm;
+    headline = wet ? t("headline.outOfSeasonRain") : t("headline.littleRain");
+    tone = wet ? "mid" : "low";
+    actions.push(action(forecast, null, NOW, wet ? t("advice.outOfSeasonRain") : t("advice.irrigateDrySeason")));
   } else {
-    headline = twoWeeks < ONSET_THRESHOLD_MM ? `Too little rain for ${crop.noun} in the next ${span} days` : `Enough rain for ${crop.noun} in the next ${span} days`;
-    tone = twoWeeks < ONSET_THRESHOLD_MM ? (crop.droughtHardy ? "mid" : "high") : "low";
-    if (twoWeeks < ONSET_THRESHOLD_MM) {
-      actions.push(
-        action(
-          forecast,
-          null,
-          "Now",
-          crop.droughtHardy ? `Keep weeds down so ${crop.noun} gets what moisture there is.` : `Mulch and irrigate where you can. Water stress at ${ctx.stageLabel} cuts yield the most.`,
-        ),
-      );
+    const short = twoWeeks < limits.onsetThresholdMm;
+    headline = short ? t("headline.tooLittleRain", { days: span }) : t("headline.enoughRain", { days: span });
+    tone = short ? (crop.droughtHardy ? "mid" : "high") : "low";
+    if (short) {
+      actions.push(action(forecast, null, NOW, crop.droughtHardy ? t("advice.keepWeedsDown") : t("advice.mulchAndIrrigate")));
     }
     if (fertilizer && !crop.likesWater) {
-      actions.push(
-        action(forecast, fertilizer, formatDay(fertilizer.date, "weekday"), "Top-dress fertilizer. The soil is moist and no heavy rain follows for two days."),
-      );
+      actions.push(action(forecast, fertilizer, formatDay(fertilizer.date, "weekday"), t("advice.topDress")));
     }
   }
 
   heavy.slice(0, 2).forEach((day) => {
+    const amount = formatAmount(day.value, "mm");
     actions.push(
       action(
         forecast,
         day,
         formatDay(day.date, "weekday"),
-        crop.likesWater
-          ? `Heavy rain (${formatAmount(day.value, "mm")}). Check bunds and drain excess water.`
-          : `Heavy rain (${formatAmount(day.value, "mm")}). Do not apply fertilizer or spray the day before. Keep drains open.`,
+        crop.likesWater ? t("advice.heavyRainWaterCrop", { amount }) : t("advice.heavyRain", { amount }),
       ),
     );
   });
   if (heavy.length) {
-    signals.push(`${heavy.length} day${heavy.length === 1 ? "" : "s"} with ${HEAVY_DAY_MM} mm or more.`);
+    signals.push(t(heavy.length === 1 ? "signal.heavyDaysOne" : "signal.heavyDaysMany", { count: heavy.length, mm: limits.heavyDayMm }));
   }
   return { tone, headline, actions, signals };
 }
 
 function rainyDaysDraft(forecast: Forecast, crop: CropProfile, ctx: SeasonContext): Draft {
-  const span = Math.min(14, forecast.days.length);
+  const { t, limits } = forecast;
+  const span = Math.min(limits.nearTermDays, forecast.days.length);
   const window = forecast.days.slice(0, span);
   const rainy = window.filter((day) => rain(day) >= forecast.wetDayMm).length;
   const share = span ? rainy / span : 0;
-  const signals = [`${rainy} of the next ${span} days reach ${forecast.wetDayMm} mm.`];
-  const actions = fieldWorkActions(forecast, crop, ctx.stage);
+  const signals = [t("signal.rainyDays", { rainDays: rainy, days: span, mm: forecast.wetDayMm })];
+  const actions = fieldWorkActions(forecast, ctx.stage);
   let tone: AdvisoryTone = "low";
   let headline: string;
 
-  if (share > 0.6) {
+  if (share > limits.manyRainDaysShare) {
     tone = ctx.stage === "harvest" ? "high" : "mid";
-    headline = actions.length ? `Few dry days. Use ${actions[0].when}` : "Almost no dry days for field work";
+    headline = actions.length ? t("headline.fewDryDaysUse", { when: actions[0].when }) : t("headline.almostNoDryDays");
     if (!actions.length) {
-      actions.push(action(forecast, null, "Now", `Postpone spraying. ${ctx.stage === "harvest" ? `Store harvested ${crop.noun} under cover.` : "Keep drains open."}`));
+      actions.push(action(forecast, null, NOW, ctx.stage === "harvest" ? t("advice.postponeSprayingHarvest") : t("advice.postponeSpraying")));
     }
-    actions.push(action(forecast, null, "All period", `Check ${crop.noun} for ${crop.wetDiseases}. Frequent rain spreads them.`, "pests"));
-  } else if (share < 0.25 && ctx.stage !== "harvest" && ctx.stage !== "dry_season") {
+    actions.push(action(forecast, null, t("when.allPeriod"), t("advice.checkWetDiseasesFrequentRain"), "pests"));
+  } else if (share < limits.fewRainDaysShare && ctx.stage !== "harvest" && ctx.stage !== "dry_season") {
     tone = crop.droughtHardy ? "mid" : "high";
-    headline = `Few rain days at ${ctx.stageLabel}`;
-    actions.unshift(action(forecast, null, "Now", `Water ${crop.noun} every few days if you can, and mulch to hold moisture.`));
+    headline = t("headline.fewRainDays");
+    actions.unshift(action(forecast, null, NOW, t("advice.waterEveryFewDays")));
   } else {
-    headline = ctx.stage === "harvest" ? `Enough dry days to harvest ${crop.noun}` : "Enough dry days between rains";
+    headline = ctx.stage === "harvest" ? t("headline.enoughDryDaysToHarvest") : t("headline.enoughDryDays");
   }
   return { tone, headline, actions, signals };
 }
 
 function drySpellDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropProfile, ctx: SeasonContext): Draft {
+  const { t, limits } = forecast;
   const spells = forecast.spells(series, "dry");
   const minDays = series.thresholds.dry_spell_min_days;
   const first = spells[0];
@@ -620,17 +500,15 @@ function drySpellDraft(forecast: Forecast, series: SubseasonalSeries, crop: Crop
   if (!first || !longest) {
     return {
       tone: "low",
-      headline: "No long dry spell ahead",
-      actions: [
-        action(forecast, null, "Now", ctx.stage === "planting" ? `Soil should stay moist. Plant ${crop.noun} when it rains.` : `Water should be enough for ${crop.noun} at ${ctx.stageLabel}.`),
-      ],
-      signals: [`No run of ${minDays}+ dry days in the remaining forecast.`],
+      headline: t("headline.noDrySpell"),
+      actions: [action(forecast, null, NOW, ctx.stage === "planting" ? t("advice.noDrySpellPlanting") : t("advice.noDrySpellWaterEnough"))],
+      signals: [t("signal.noDrySpell", { days: minDays })],
     };
   }
 
   const signals = spells
     .slice(0, 3)
-    .map((spell) => `${spell.days}-day dry spell ${spellFact(forecast, spell)}${spell.open_end ? " (may continue past the forecast)" : ""}.`);
+    .map((spell) => t(spell.open_end ? "signal.drySpellOpen" : "signal.drySpell", { days: spell.days, dates: spellFact(forecast, spell) }));
   const start = forecast.dayOf(first);
   const actions: AdvisoryAction[] = [];
   let tone: AdvisoryTone;
@@ -638,53 +516,52 @@ function drySpellDraft(forecast: Forecast, series: SubseasonalSeries, crop: Crop
 
   if (ctx.stage === "harvest" || ctx.stage === "dry_season") {
     tone = "low";
-    headline = forecast.ongoing(first) ? "Dry now, good for drying" : `Dry from ${formatDay(first.start_date, "weekday")}, good for drying`;
-    actions.push(action(forecast, start, forecast.spellLabel(first), `Harvest and sun-dry ${crop.noun} on tarpaulins, off bare ground.`, "crops", first.end_date));
+    headline = forecast.ongoing(first)
+      ? t("headline.dryNowGoodForDrying")
+      : t("headline.dryFromGoodForDrying", { date: formatDay(first.start_date, "weekday") });
+    actions.push(action(forecast, start, forecast.spellLabel(first), t("advice.sunDry"), "crops", first.end_date));
     if (ctx.stage === "dry_season") {
-      actions.push(action(forecast, null, "Now", "Protect stored grain and seed from heat and pests."));
+      actions.push(action(forecast, null, NOW, t("advice.protectStoredGrain")));
     }
   } else if (ctx.stage === "planting" || ctx.stage === "land_prep") {
     tone = "high";
-    headline = forecast.ongoing(first) ? "Do not plant yet. Soils are drying" : `Do not plant yet. Dry spell from ${formatDay(first.start_date, "weekday")}`;
-    actions.push(
-      action(forecast, start, `Until ${formatDay(first.end_date, "short")}`, `Do not plant ${crop.noun} before this spell ends. Seedlings may die.`, "crops", first.end_date),
-    );
-    actions.push(action(forecast, null, "Now", "Prepare land and ridges now, so you can plant fast when rain returns."));
-  } else {
-    const severe = longest.days >= minDays + 3 || ctx.stage === "critical";
-    tone = crop.droughtHardy ? "mid" : severe ? "high" : "mid";
-    headline =
-      ctx.stage === "critical"
-        ? `Dry spell during ${crop.criticalStage}`
-        : `${longest.days}-day dry spell ${forecast.ongoing(longest) ? "now" : `from ${formatDay(longest.start_date, "weekday")}`}`;
+    headline = forecast.ongoing(first)
+      ? t("headline.doNotPlantSoilsDrying")
+      : t("headline.doNotPlantDrySpellFrom", { date: formatDay(first.start_date, "weekday") });
     actions.push(
       action(
         forecast,
         start,
-        forecast.spellLabel(first),
-        crop.droughtHardy
-          ? `${crop.label} cope with dry spells. Keep weeds down to save soil moisture.`
-          : `Irrigate ${crop.noun} in this spell, morning or evening, and mulch the rows.`,
+        t("when.until", { date: formatDay(first.end_date, "short") }),
+        t("advice.doNotPlantBeforeSpellEnds"),
+        "crops",
+        first.end_date,
       ),
     );
+    actions.push(action(forecast, null, NOW, t("advice.prepareLandForRain")));
+  } else {
+    const severe = longest.days >= minDays + limits.severeDrySpellExtraDays || ctx.stage === "critical";
+    tone = crop.droughtHardy ? "mid" : severe ? "high" : "mid";
+    headline =
+      ctx.stage === "critical"
+        ? t("headline.drySpellCritical")
+        : forecast.ongoing(longest)
+          ? t("headline.drySpellNow", { days: longest.days })
+          : t("headline.drySpellFrom", { days: longest.days, date: formatDay(longest.start_date, "weekday") });
+    actions.push(
+      action(forecast, start, forecast.spellLabel(first), crop.droughtHardy ? t("advice.droughtHardyCope") : t("advice.irrigateInSpell")),
+    );
     if (ctx.stage === "critical" && !crop.droughtHardy) {
-      actions.push(
-        action(forecast, start, forecast.spellLabel(first), `If water is short, water fields at ${crop.criticalStage} first. Yield drops fastest there.`, "crops", first.end_date),
-      );
+      actions.push(action(forecast, start, forecast.spellLabel(first), t("advice.waterCriticalFirst"), "crops", first.end_date));
     }
     const next = spells[1];
     if (next && !crop.droughtHardy) {
-      actions.push(action(forecast, forecast.dayOf(next), forecast.spellLabel(next), "Another dry spell follows. Keep water and mulch ready.", "crops", next.end_date));
+      actions.push(action(forecast, forecast.dayOf(next), forecast.spellLabel(next), t("advice.anotherDrySpell"), "crops", next.end_date));
     }
     if (ctx.stage === "growing") {
       // Top-dressing happens in the vegetative stage; by flowering it is too late to matter.
       actions.push(
-        action(
-          forecast,
-          start,
-          forecast.ongoing(first) ? "Now" : `Before ${formatDay(first.start_date, "short")}`,
-          "Do not top-dress fertilizer into drying soil. Apply after the next good rain.",
-        ),
+        action(forecast, start, forecast.ongoing(first) ? NOW : beforeLabel(forecast, first.start_date), t("advice.noTopDressDrySoil")),
       );
     }
   }
@@ -692,6 +569,7 @@ function drySpellDraft(forecast: Forecast, series: SubseasonalSeries, crop: Crop
 }
 
 function wetSpellDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropProfile, ctx: SeasonContext): Draft {
+  const { t } = forecast;
   const spells = forecast.spells(series, "wet");
   const minDays = series.thresholds.wet_spell_min_days;
   const first = spells[0];
@@ -699,47 +577,45 @@ function wetSpellDraft(forecast: Forecast, series: SubseasonalSeries, crop: Crop
   if (!first) {
     return {
       tone: "low",
-      headline: "No prolonged wet spell ahead",
-      actions: [
-        action(forecast, null, "Now", ctx.stage === "harvest" ? `Harvest and dry ${crop.noun} as planned.` : "Spray and apply fertilizer as usual."),
-      ],
-      signals: [`No run of ${minDays}+ wet days in the remaining forecast.`],
+      headline: t("headline.noWetSpell"),
+      actions: [action(forecast, null, NOW, ctx.stage === "harvest" ? t("advice.noWetSpellHarvest") : t("advice.noWetSpell"))],
+      signals: [t("signal.noWetSpell", { days: minDays })],
     };
   }
 
   const start = forecast.dayOf(first);
   const signals = spells
     .slice(0, 3)
-    .map((spell) => `${spell.days}-day wet spell ${spellFact(forecast, spell)}, about ${formatAmount(spell.total_mm, "mm")}.`);
+    .map((spell) => t("signal.wetSpell", { days: spell.days, dates: spellFact(forecast, spell), amount: formatAmount(spell.total_mm, "mm") }));
   const actions: AdvisoryAction[] = [];
   let tone: AdvisoryTone;
   let headline: string;
 
   if (crop.likesWater && ctx.stage !== "harvest") {
     tone = "low";
-    headline = "Wet spell ahead. Good for rice";
-    actions.push(action(forecast, start, forecast.spellLabel(first), "Repair bunds to hold the water, and open spillways for heavy days.", "crops", first.end_date));
+    headline = t("headline.wetSpellGoodForCrop");
+    actions.push(action(forecast, start, forecast.spellLabel(first), t("advice.repairBunds"), "crops", first.end_date));
   } else if (ctx.stage === "harvest") {
     tone = "high";
-    headline = forecast.ongoing(first) ? `Wet spell now. Protect harvested ${crop.noun}` : `Harvest ${crop.noun} before ${formatDay(first.start_date, "weekday")}`;
+    headline = forecast.ongoing(first)
+      ? t("headline.wetSpellNowProtect")
+      : t("headline.harvestBefore", { date: formatDay(first.start_date, "weekday") });
     actions.push(
       action(
         forecast,
         start,
-        forecast.ongoing(first) ? "Now" : `Before ${formatDay(first.start_date, "short")}`,
-        forecast.ongoing(first)
-          ? `Keep harvested ${crop.noun} covered and off the ground. ${sentence(crop.harvestRisk)}.`
-          : `Bring in mature ${crop.noun} and store it under cover. ${sentence(crop.harvestRisk)}.`,
+        forecast.ongoing(first) ? NOW : beforeLabel(forecast, first.start_date),
+        forecast.ongoing(first) ? t("advice.keepHarvestCovered") : t("advice.bringInMature"),
       ),
     );
   } else {
     tone = "mid";
-    headline = forecast.ongoing(first) ? "Wet spell now" : `Wet spell from ${formatDay(first.start_date, "weekday")}`;
+    headline = forecast.ongoing(first) ? t("headline.wetSpellNow") : t("headline.wetSpellFrom", { date: formatDay(first.start_date, "weekday") });
     if (!forecast.ongoing(first)) {
-      actions.push(action(forecast, start, `Before ${formatDay(first.start_date, "short")}`, "Spray and top-dress before it starts, so rain does not wash them off."));
+      actions.push(action(forecast, start, beforeLabel(forecast, first.start_date), t("advice.sprayBeforeWetSpell")));
     }
-    actions.push(action(forecast, start, forecast.spellLabel(first), "Clear drains so fields do not waterlog during the spell.", "crops", first.end_date));
-    actions.push(action(forecast, start, forecast.spellLabel(first), `Check ${crop.noun} for ${crop.wetDiseases} during the spell.`, "pests", first.end_date));
+    actions.push(action(forecast, start, forecast.spellLabel(first), t("advice.clearDrains"), "crops", first.end_date));
+    actions.push(action(forecast, start, forecast.spellLabel(first), t("advice.checkWetDiseasesSpell"), "pests", first.end_date));
   }
   if (spells[1]) {
     const next = spells[1];
@@ -748,14 +624,15 @@ function wetSpellDraft(forecast: Forecast, series: SubseasonalSeries, crop: Crop
         forecast,
         forecast.dayOf(next),
         forecast.spellLabel(next),
-        ctx.stage === "harvest" ? "Another wet spell follows. Keep produce covered." : "Another wet spell follows. Plan spraying for the dry days in between.",
+        ctx.stage === "harvest" ? t("advice.anotherWetSpellHarvest") : t("advice.anotherWetSpell"),
       ),
     );
   }
   return { tone, headline, actions, signals };
 }
 
-function onsetDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropProfile, ctx: SeasonContext): Draft {
+function onsetDraft(forecast: Forecast, series: SubseasonalSeries, ctx: SeasonContext): Draft {
+  const { t } = forecast;
   const onset = series.onset ?? null;
   const { thresholds } = series;
   const minMm = thresholds.onset_mm ?? 20;
@@ -765,17 +642,17 @@ function onsetDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropPro
   const firstDate = series.days[0]?.date;
   const signals: string[] = [];
   if (onset) {
-    signals.push(`${formatAmount(onset.rain_mm, "mm")} within ${windowDays} days from ${formatDay(onset.date, "weekday")}.`);
+    signals.push(t("signal.onsetRain", { amount: formatAmount(onset.rain_mm, "mm"), days: windowDays, date: formatDay(onset.date, "weekday") }));
     signals.push(
       onset.provisional
-        ? `Longest dry run after it: ${onset.longest_dry_after} days, but the forecast ends ${onset.guard_days} days in, short of the ${guardDays}-day check.`
-        : `Longest dry run in the ${guardDays} days after: ${onset.longest_dry_after} days (limit ${maxDry}).`,
+        ? t("signal.onsetUncertain", { dryRun: String(onset.longest_dry_after), guardDays: onset.guard_days, checkDays: guardDays })
+        : t("signal.onsetChecked", { checkDays: guardDays, dryRun: String(onset.longest_dry_after), maxDry }),
     );
   } else {
-    signals.push(`No ${minMm} mm burst within ${windowDays} days that stays clear of a ${maxDry + 1}+ day dry spell.`);
+    signals.push(t("signal.noOnset", { mm: minMm, days: windowDays, dryDays: maxDry + 1 }));
   }
   if (firstDate) {
-    signals.push(`Only this forecast is searched; rain before ${formatDay(firstDate, "short")} is not counted.`);
+    signals.push(t("signal.onsetSearchOnly", { date: formatDay(firstDate, "short") }));
   }
 
   const day = onset ? (forecast.days.find((item) => item.day === onset.day) ?? null) : null;
@@ -783,19 +660,13 @@ function onsetDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropPro
 
   if (!plantingTime) {
     // Onset matters for sowing; at other stages say what it means without pushing planting.
+    const started = onset && onset.date < (forecast.days[0]?.date ?? "");
     return {
       tone: "low",
       headline: onset
-        ? `Rains ${onset.date < (forecast.days[0]?.date ?? "") ? "started" : "start"} ${formatDay(onset.date, "weekday")}`
-        : "No steady rains in this forecast",
-      actions: [
-        action(
-          forecast,
-          null,
-          "Now",
-          "See the rainfall and spell layers for field work.",
-        ),
-      ],
+        ? t(started ? "headline.rainsStarted" : "headline.rainsStart", { date: formatDay(onset.date, "weekday") })
+        : t("headline.noSteadyRains"),
+      actions: [action(forecast, null, NOW, t("advice.seeOtherLayers"))],
       signals,
     };
   }
@@ -803,11 +674,8 @@ function onsetDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropPro
   if (!onset) {
     return {
       tone: "high",
-      headline: "No reliable planting rains yet",
-      actions: [
-        action(forecast, null, "Now", `Do not plant ${crop.noun} yet. Seedlings could die in a dry spell after a false start.`),
-        action(forecast, null, "Now", "Prepare land, ridges and seed so you can plant when the rains start."),
-      ],
+      headline: t("headline.noReliableRains"),
+      actions: [action(forecast, null, NOW, t("advice.doNotPlantFalseStart")), action(forecast, null, NOW, t("advice.prepareForRains"))],
       signals,
     };
   }
@@ -816,8 +684,8 @@ function onsetDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropPro
     // The onset fell before today on a stale run.
     return {
       tone: "low",
-      headline: `Planting rains started ${formatDay(onset.date, "weekday")}`,
-      actions: [action(forecast, null, "Now", `Soils should be moist. Plant ${crop.noun} now if you have not.`)],
+      headline: t("headline.plantingRainsStarted", { date: formatDay(onset.date, "weekday") }),
+      actions: [action(forecast, null, NOW, t("advice.plantNowIfNot"))],
       signals,
     };
   }
@@ -826,20 +694,20 @@ function onsetDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropPro
   if (onset.provisional) {
     return {
       tone: "mid",
-      headline: `Rains may start ${when}`,
+      headline: t("headline.rainsMayStart", { date: when }),
       actions: [
-        action(forecast, null, "Now", "Prepare land and seed now."),
-        action(forecast, day, `From ${formatDay(onset.date, "short")}`, `Plant ${crop.noun} only if the next forecast shows no long dry spell after this rain.`, "crops", forecast.lastDate()),
+        action(forecast, null, NOW, t("advice.prepareLandAndSeed")),
+        action(forecast, day, fromLabel(forecast, onset.date), t("advice.plantIfNextForecastDry"), "crops", forecast.lastDate()),
       ],
       signals,
     };
   }
   return {
     tone: "low",
-    headline: `Rains start ${when}`,
+    headline: t("headline.rainsStart", { date: when }),
     actions: [
-      action(forecast, null, "Now", "Finish land preparation and get seed and fertilizer ready."),
-      action(forecast, day, `From ${formatDay(onset.date, "short")}`, `Plant ${crop.noun} when this rain has wet the soil.`, "crops", forecast.lastDate()),
+      action(forecast, null, NOW, t("advice.getSeedReady")),
+      action(forecast, day, fromLabel(forecast, onset.date), t("advice.plantWhenSoilWet"), "crops", forecast.lastDate()),
     ],
     signals,
   };
@@ -849,7 +717,7 @@ function onsetDraft(forecast: Forecast, series: SubseasonalSeries, crop: CropPro
 
 /** Forecast days the advisory covers: today to the end of the "possible" range. */
 function validityWindow(forecast: Forecast) {
-  return forecast.days.slice(0, POSSIBLE_LEAD_DAYS);
+  return forecast.days.slice(0, forecast.limits.possibleLeadDays);
 }
 
 /** All spells of a kind that start inside the validity window (or are already under way). */
@@ -859,9 +727,10 @@ function spellsInWindow(forecast: Forecast, series: SubseasonalSeries, kind: "dr
 }
 
 function describeSpell(forecast: Forecast, spell: SubseasonalSpell) {
-  return forecast.ongoing(spell)
-    ? `until ${formatDay(spell.end_date, "weekday")}`
-    : `${shortRange(spell.start_date, spell.end_date)} (${spell.days}${spell.open_end ? "+" : ""} days)`;
+  if (forecast.ongoing(spell)) {
+    return forecast.t("spell.until", { date: formatDay(spell.end_date, "weekday") });
+  }
+  return forecast.t(spell.open_end ? "spell.rangeOpen" : "spell.range", { dates: shortRange(spell.start_date, spell.end_date), days: spell.days });
 }
 
 /** Longest run of days below the rain-day threshold inside the window. */
@@ -876,9 +745,10 @@ function longestDryRun(forecast: Forecast, window: SubseasonalDay[]) {
 }
 
 /** Days in the window with flood-level rain: a 10%+ chance for an ensemble, forecast for a single run. */
-function extremeDays(series: SubseasonalSeries, window: SubseasonalDay[]) {
+function extremeDays(forecast: Forecast, series: SubseasonalSeries, window: SubseasonalDay[]) {
   const ensemble = (series.members ?? 1) > 1;
-  return window.filter((day) => (day.extreme_prob ?? 0) >= (ensemble ? 10 : 50));
+  const { extremeChanceEnsemblePct, extremeChanceSinglePct } = forecast.limits;
+  return window.filter((day) => (day.extreme_prob ?? 0) >= (ensemble ? extremeChanceEnsemblePct : extremeChanceSinglePct));
 }
 
 /**
@@ -886,49 +756,59 @@ function extremeDays(series: SubseasonalSeries, window: SubseasonalDay[]) {
  * for rainfall, rain days for rain days, only dry (or wet) spells for the spell layers, the onset date.
  */
 function outlookFor(layer: SubseasonalLayerKey, forecast: Forecast, series: SubseasonalSeries, window: SubseasonalDay[]) {
-  const span = `${window.length} days`;
+  const { t } = forecast;
   if (layer === "dry_spell_days" || layer === "wet_spell_days") {
     const kind = layer === "dry_spell_days" ? "dry" : "wet";
     const minDays = kind === "dry" ? series.thresholds.dry_spell_min_days : series.thresholds.wet_spell_min_days;
     const spells = spellsInWindow(forecast, series, kind, window);
     if (!spells.length) {
-      return `No ${kind} spell of ${minDays}+ days ahead.`;
+      return t(kind === "dry" ? "outlook.noDrySpell" : "outlook.noWetSpell", { days: minDays });
     }
     const [first, ...rest] = spells;
-    const more = rest.length ? `, then ${rest.map((spell) => describeSpell(forecast, spell)).join(" and ")}` : "";
-    return `${kind === "dry" ? "Dry" : "Wet"} spell ${describeSpell(forecast, first)}${more}.`;
+    const more = rest.length
+      ? t("outlook.thenMore", { spells: rest.map((spell) => describeSpell(forecast, spell)).join(` ${t("word.and")} `) })
+      : "";
+    return t(kind === "dry" ? "outlook.drySpell" : "outlook.wetSpell", { spell: describeSpell(forecast, first), more });
   }
   if (layer === "rainy_days") {
     const rainDays = window.filter((day) => rain(day) >= forecast.wetDayMm).length;
-    return `Rain on ${rainDays} of ${span}. Longest dry run: ${longestDryRun(forecast, window)} days.`;
+    return t("outlook.rainDays", { rainDays, days: window.length, dryRun: longestDryRun(forecast, window) });
   }
   if (layer === "extreme_rain") {
-    const risky = extremeDays(series, window);
+    const risky = extremeDays(forecast, series, window);
     const threshold = series.thresholds.extreme_rain_mm ?? 50;
-    if (!risky.length) return `No day of ${threshold} mm or more ahead.`;
+    if (!risky.length) return t("outlook.noExtreme", { mm: threshold });
     const ensemble = (series.members ?? 1) > 1;
     const listed = risky
       .slice(0, 3)
-      .map((day) => `${formatDay(day.date, "weekday")}${ensemble ? ` (${Math.round(day.extreme_prob ?? 0)}% chance)` : ""}`)
+      .map((day) =>
+        ensemble
+          ? t("outlook.extremeDayChance", { date: formatDay(day.date, "weekday"), chance: Math.round(day.extreme_prob ?? 0) })
+          : formatDay(day.date, "weekday"),
+      )
       .join(", ");
-    return `${threshold} mm or more in a day ${ensemble ? "possible" : "forecast"} on ${listed}${risky.length > 3 ? " and later" : ""}.`;
+    return t(ensemble ? "outlook.extremePossible" : "outlook.extremeForecast", {
+      mm: threshold,
+      dates: listed,
+      later: risky.length > 3 ? t("outlook.andLater") : "",
+    });
   }
   if (layer === "onset") {
     const onset = series.onset ?? null;
-    if (!onset) return "No steady start of the rains in this forecast.";
-    return onset.date < (window[0]?.date ?? "")
-      ? `Rains started ${formatDay(onset.date, "weekday")}.`
-      : `Rains expected to start ${formatDay(onset.date, "weekday")}${onset.provisional ? ", not yet certain" : ""}.`;
+    if (!onset) return t("outlook.noOnset");
+    const date = formatDay(onset.date, "weekday");
+    if (onset.date < (window[0]?.date ?? "")) return t("outlook.onsetStarted", { date });
+    return t(onset.provisional ? "outlook.onsetExpectedUncertain" : "outlook.onsetExpected", { date });
   }
   const total = window.reduce((sum, day) => sum + rain(day), 0);
   const wettest = window.reduce<SubseasonalDay | null>((best, day) => (rain(day) > rain(best ?? undefined) ? day : best), null);
   const last = window[window.length - 1]?.day ?? 0;
   const heavy = forecast.heavyDays().filter((day) => day.day <= last).length;
-  const parts = [`About ${Math.round(total)} mm of rain in ${span}`];
+  const parts = [t("outlook.rainTotal", { mm: Math.round(total), days: window.length })];
   if (wettest && rain(wettest) >= forecast.wetDayMm) {
-    parts.push(`Wettest day ${formatDay(wettest.date, "weekday")} (${formatAmount(wettest.value, "mm")})`);
+    parts.push(t("outlook.wettestDay", { date: formatDay(wettest.date, "weekday"), amount: formatAmount(wettest.value, "mm") }));
   }
-  if (heavy) parts.push(`${heavy} heavy-rain day${heavy === 1 ? "" : "s"}`);
+  if (heavy) parts.push(t(heavy === 1 ? "outlook.heavyDaysOne" : "outlook.heavyDaysMany", { count: heavy }));
   return `${parts.join(". ")}.`;
 }
 
@@ -941,63 +821,63 @@ function impactFor(
   ctx: SeasonContext,
   window: SubseasonalDay[],
 ) {
+  const { limits } = forecast;
   // Named for the chosen crop ("maize at tasselling and silking"), or crops in general.
-  const crops = ctx.stage === "critical" ? `${crop.noun} at ${ctx.stageLabel}` : `growing ${crop.noun}`;
+  const crops = forecast.t(ctx.stage === "critical" ? "impact.cropsAtStage" : "impact.cropsGrowing");
+  const t: Writer = (id, vars) => forecast.t(id, { crops, ...vars });
   const cropping = ctx.stage === "growing" || ctx.stage === "critical";
   const sowing = ctx.stage === "planting" || ctx.stage === "land_prep";
 
   if (layer === "dry_spell_days") {
     const dry = spellsInWindow(forecast, series, "dry", window)[0];
-    if (!dry) return cropping ? "No long dry spell. Soil should stay moist." : "No long dry spell ahead.";
-    if (ctx.stage === "harvest") return "Dry weather. Good for harvesting and drying.";
-    if (ctx.stage === "dry_season") return "Dry weather. Water stays scarce for crops and animals.";
-    if (sowing) return `${sentence(crop.noun)} planted now may die before rain returns.`;
-    if (crop.droughtHardy) return `The soil dries out, but ${crop.noun} cope better than most crops.`;
-    return `The soil dries out. Yield losses are highest for ${crops}.`;
+    if (!dry) return cropping ? t("impact.dryNoneCropping") : t("impact.dryNone");
+    if (ctx.stage === "harvest") return t("impact.dryHarvest");
+    if (ctx.stage === "dry_season") return t("impact.dryDrySeason");
+    if (sowing) return t("impact.drySowing");
+    if (crop.droughtHardy) return t("impact.dryDroughtHardy");
+    return t("impact.dry");
   }
   if (layer === "wet_spell_days") {
     const wet = spellsInWindow(forecast, series, "wet", window)[0];
-    if (!wet) return "No long wet spell. Field work and drying can go ahead.";
-    if (ctx.stage === "harvest") return "Drying is slow while it rains.";
-    if (sowing) return `The soil is moist enough to plant ${crop.noun}, but fields may waterlog.`;
-    if (crop.likesWater) return `Good for ${crop.noun} fields. Watch for ${crop.wetDiseases}.`;
-    return `Fields may waterlog. ${sentence(crop.wetDiseases)} spread more, and spraying is harder.`;
+    if (!wet) return t("impact.wetNone");
+    if (ctx.stage === "harvest") return t("impact.wetHarvest");
+    if (sowing) return t("impact.wetSowing");
+    if (crop.likesWater) return t("impact.wetLikesWater");
+    return t("impact.wet");
   }
   if (layer === "rainy_days") {
     const share = window.filter((day) => rain(day) >= forecast.wetDayMm).length / Math.max(1, window.length);
-    if (share >= 0.6) {
-      return ctx.stage === "harvest" ? `Rain most days. ${sentence(crop.noun)} will be hard to dry.` : `Rain most days. ${sentence(crop.wetDiseases)} spread more, and field work is hard.`;
+    if (share >= limits.manyRainDaysShare) {
+      return ctx.stage === "harvest" ? t("impact.rainyManyHarvest") : t("impact.rainyMany");
     }
-    if (share < 0.25) {
-      if (!cropping) return "Few rain days.";
-      return crop.droughtHardy ? `Few rain days, but ${crop.noun} cope with dry weather.` : `Few rain days. ${sentence(crops)} may run short of water.`;
+    if (share < limits.fewRainDaysShare) {
+      if (!cropping) return t("impact.rainyFew");
+      return crop.droughtHardy ? t("impact.rainyFewDroughtHardy") : t("impact.rainyFewCropping");
     }
-    return "Good for spraying, weeding and other field work.";
+    return t("impact.rainyNormal");
   }
   if (layer === "extreme_rain") {
-    if (!extremeDays(series, window).length) return "No flood-level rain expected. Field work can go ahead.";
-    if (ctx.stage === "harvest") return `Very heavy rain can damage ${crop.noun} still in the field and flood stores.`;
-    return "Very heavy rain can flood low fields, wash away seed and fertilizer, and cut off roads.";
+    if (!extremeDays(forecast, series, window).length) return t("impact.extremeNone");
+    if (ctx.stage === "harvest") return t("impact.extremeHarvest");
+    return t("impact.extreme");
   }
   if (layer === "onset") {
     const onset = series.onset ?? null;
-    if (!sowing) return "It is not planting time.";
-    if (!onset) return "The rains have not started reliably. Planting now risks a false start.";
-    return onset.provisional
-      ? "Rains may start, but a dry spell could still follow."
-      : "Soils should be wet enough to plant once the rains start.";
+    if (!sowing) return t("impact.onsetNotPlantingTime");
+    if (!onset) return t("impact.onsetNone");
+    return onset.provisional ? t("impact.onsetUncertain") : t("impact.onsetConfirmed");
   }
   const total = window.reduce((sum, day) => sum + rain(day), 0);
   const last = window[window.length - 1]?.day ?? 0;
   const heavy = forecast.heavyDays().some((day) => day.day <= last);
   if (ctx.stage === "harvest") {
-    return heavy || total >= ONSET_THRESHOLD_MM ? `Rain at harvest time. ${sentence(crop.harvestRisk)}.` : `Little rain. Good for harvesting and drying ${crop.noun}.`;
+    return heavy || total >= limits.onsetThresholdMm ? t("impact.rainHarvestWet") : t("impact.rainHarvestDry");
   }
-  if (ctx.stage === "dry_season") return total < CESSATION_THRESHOLD_MM ? "Little rain. Water stays scarce." : "Some rain, but not enough to start the season.";
-  if (sowing) return total >= ONSET_THRESHOLD_MM ? `Enough rain may fall to plant ${crop.noun}.` : `Not enough rain yet to plant ${crop.noun} safely.`;
-  if (heavy) return "Heavy rain can waterlog fields and wash off fertilizer.";
-  if (crop.likesWater && total < ONSET_THRESHOLD_MM * 2) return `Light rain for ${crop.noun}. Keep water in the fields.`;
-  return total < ONSET_THRESHOLD_MM ? `Light rain. ${sentence(crops)} may need water.` : `Rain should keep the soil moist enough for ${crop.noun}.`;
+  if (ctx.stage === "dry_season") return total < limits.cessationThresholdMm ? t("impact.rainDrySeasonDry") : t("impact.rainDrySeasonSome");
+  if (sowing) return total >= limits.onsetThresholdMm ? t("impact.rainSowingEnough") : t("impact.rainSowingShort");
+  if (heavy) return t("impact.rainHeavy");
+  if (crop.likesWater && total < limits.onsetThresholdMm * 2) return t("impact.rainLightWaterCrop");
+  return total < limits.onsetThresholdMm ? t("impact.rainLight") : t("impact.rainEnough");
 }
 
 /**
@@ -1008,12 +888,12 @@ function generalActions(
   layer: SubseasonalLayerKey,
   forecast: Forecast,
   series: SubseasonalSeries,
-  crop: CropProfile,
   ctx: SeasonContext,
   window: SubseasonalDay[],
   existing: AdvisoryAction[],
   includeLivestock: boolean,
 ): AdvisoryAction[] {
+  const { t, limits } = forecast;
   const actions: AdvisoryAction[] = [];
   const cropping = ctx.stage === "growing" || ctx.stage === "critical";
   const hasPests = existing.some((item) => item.group === "pests");
@@ -1023,21 +903,10 @@ function generalActions(
     const dry = spellsInWindow(forecast, series, "dry", window)[0];
     if (dry) {
       if (!hasPests && cropping) {
-        actions.push(
-          action(forecast, forecast.dayOf(dry), forecast.spellLabel(dry), `Check ${crop.noun} for ${crop.dryPests}. They spread in dry weather.`, "pests", dry.end_date),
-        );
+        actions.push(action(forecast, forecast.dayOf(dry), forecast.spellLabel(dry), t("advice.checkDryPests"), "pests", dry.end_date));
       }
       if (includeLivestock) {
-        actions.push(
-          action(
-            forecast,
-            forecast.dayOf(dry),
-            forecast.spellLabel(dry),
-            "Store drinking water for animals, and graze early morning or late afternoon.",
-            "livestock",
-            dry.end_date,
-          ),
-        );
+        actions.push(action(forecast, forecast.dayOf(dry), forecast.spellLabel(dry), t("advice.livestockDrySpell"), "livestock", dry.end_date));
       }
     }
   } else if (layer === "wet_spell_days") {
@@ -1045,67 +914,66 @@ function generalActions(
     if (wet) {
       if (!hasPests && ctx.stage !== "dry_season") {
         actions.push(
-          action(forecast, forecast.dayOf(wet), forecast.spellLabel(wet), `Check ${crop.noun} for ${crop.wetDiseases} during the wet spell.`, "pests", wet.end_date),
+          action(forecast, forecast.dayOf(wet), forecast.spellLabel(wet), t("advice.checkWetDiseasesWetSpell"), "pests", wet.end_date),
         );
       }
       if (includeLivestock) {
-        actions.push(
-          action(forecast, forecast.dayOf(wet), forecast.spellLabel(wet), "Keep animal pens dry and clean to prevent foot rot and disease.", "livestock", wet.end_date),
-        );
+        actions.push(action(forecast, forecast.dayOf(wet), forecast.spellLabel(wet), t("advice.livestockWetSpell"), "livestock", wet.end_date));
       }
     }
   } else if (layer === "rainy_days") {
     const share = window.filter((day) => rain(day) >= forecast.wetDayMm).length / Math.max(1, window.length);
-    if (includeLivestock && share < 0.25) {
-      actions.push(action(forecast, null, "All period", "Few rain days. Store water for animals.", "livestock"));
-    } else if (includeLivestock && share >= 0.6) {
-      actions.push(action(forecast, null, "All period", "Rain most days. Keep animal pens dry and feed under cover.", "livestock"));
+    if (includeLivestock && share < limits.fewRainDaysShare) {
+      actions.push(action(forecast, null, t("when.allPeriod"), t("advice.livestockFewRainDays"), "livestock"));
+    } else if (includeLivestock && share >= limits.manyRainDaysShare) {
+      actions.push(action(forecast, null, t("when.allPeriod"), t("advice.livestockManyRainDays"), "livestock"));
     }
   } else if (layer === "extreme_rain") {
-    const risky = extremeDays(series, window)[0];
+    const risky = extremeDays(forecast, series, window)[0];
     if (risky && includeLivestock) {
       const day = forecast.days.find((item) => item.day === risky.day) ?? null;
-      actions.push(action(forecast, day, formatDay(risky.date, "weekday"), "Flood risk. Move animals and feed to higher ground.", "livestock"));
+      actions.push(action(forecast, day, formatDay(risky.date, "weekday"), t("advice.livestockFlood"), "livestock"));
     }
   } else if (layer === "rainfall") {
     const heavy = forecast.heavyDays().find((day) => day.day <= last) ?? null;
     if (heavy && includeLivestock) {
-      actions.push(action(forecast, heavy, formatDay(heavy.date, "weekday"), "Heavy rain. Move animals and feed to higher ground.", "livestock"));
+      actions.push(action(forecast, heavy, formatDay(heavy.date, "weekday"), t("advice.livestockHeavyRain"), "livestock"));
     }
   }
   return actions;
 }
-
-/** At most this many actions per group, so each group stays short. */
-const GROUP_LIMITS: Record<AdvisoryGroup, number> = { crops: 3, pests: 1, livestock: 2 };
 
 export function buildSubseasonalAdvisory(
   layer: SubseasonalLayerKey,
   series: SubseasonalSeries,
   cropKey: CropKey,
   today: string = todayIso(),
+  content: AdvisoryContent = DEFAULT_ADVISORY_CONTENT,
 ): SubseasonalAdvisory {
-  const crop = CROPS[cropKey];
-  const forecast = new Forecast(series, today);
-  const sector = sectorFor(series);
+  const crop = cropFor(content, cropKey);
+  const { t, setStage } = writerFor(content, crop);
+  const forecast = new Forecast(series, today, content.thresholds, t);
+  const sector = sectorFor(series, content.sectors);
+  const sectorLabel = content.sectors.labels[sector];
   if (!forecast.days.length) {
     const last = series.days[series.days.length - 1];
     return {
       tone: "mid",
-      headline: "This forecast has ended",
-      context: { sector: SECTOR_LABELS[sector], season: "Forecast expired", stage: "no current advice" },
+      headline: t("headline.expired"),
+      context: { sector: sectorLabel, season: t("context.expiredSeason"), stage: t("context.expiredStage") },
       validity: null,
       outlook: null,
       impact: null,
-      actions: [{ when: "Now", date: null, text: "Check back when the next 46-day run is published.", confidence: "likely", group: "crops", end: null }],
-      signals: [last ? `The forecast covered days up to ${formatDay(last.date, "weekday")}.` : "The forecast has no days."],
+      actions: [{ when: t("when.now"), date: null, text: t("advice.expiredCheckBack"), confidence: "likely", group: "crops", end: null }],
+      signals: [last ? t("signal.expiredCovered", { date: formatDay(last.date, "weekday") }) : t("signal.expiredEmpty")],
     };
   }
   const ctx: SeasonContext = {
     sector,
-    sectorLabel: SECTOR_LABELS[sector],
-    ...seasonFor(sector, forecast.days[0]?.date ?? today, crop),
+    sectorLabel,
+    ...seasonFor(content, sector, forecast.days[0]?.date ?? today, crop),
   };
+  setStage(ctx.stageLabel);
 
   const draft =
     layer === "rainy_days"
@@ -1115,11 +983,11 @@ export function buildSubseasonalAdvisory(
         : layer === "wet_spell_days"
           ? wetSpellDraft(forecast, series, crop, ctx)
           : layer === "onset"
-            ? onsetDraft(forecast, series, crop, ctx)
+            ? onsetDraft(forecast, series, ctx)
             : rainfallDraft(forecast, crop, ctx);
 
   const window = validityWindow(forecast);
-  const general = generalActions(layer, forecast, series, crop, ctx, window, draft.actions, cropKey === "all");
+  const general = generalActions(layer, forecast, series, ctx, window, draft.actions, crop.livestockAdvice);
 
   // Standing advice ("Now", "All period") leads; dated actions follow in calendar order.
   const used: Record<AdvisoryGroup, number> = { crops: 0, pests: 0, livestock: 0 };
@@ -1134,7 +1002,7 @@ export function buildSubseasonalAdvisory(
     .map(({ item }) => item)
     .filter((item) => {
       used[item.group] += 1;
-      return used[item.group] <= GROUP_LIMITS[item.group];
+      return used[item.group] <= content.groups.limits[item.group];
     });
 
   return {

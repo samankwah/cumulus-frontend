@@ -13,6 +13,7 @@ import { RunBadge, SubseasonalDock, SubseasonalPanel, SubseasonalTopBar } from "
 import { SubseasonalDrawer } from "@/components/subseasonal/subseasonal-drawer";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
 import { useSubseasonal } from "@/hooks/use-subseasonal";
+import { useSiteContent } from "@/lib/content/content-context";
 import { districtFullName, isPointInGeometry, loadMapData } from "@/lib/map-data";
 import {
   aggregationLabel,
@@ -34,8 +35,6 @@ const ForecastRasterMap = dynamic(
 
 /** Close to opaque so the map matches the legend; place labels are drawn above the raster. */
 const SUBSEASONAL_TILE_OPACITY = 0.85;
-/** Same as the static title in app/layout.tsx; shown until an area is selected on the 46-day map. */
-const DEFAULT_PAGE_TITLE = "Cumulus · Ghana Forecast Map";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
@@ -280,16 +279,18 @@ export function DashboardShell() {
 
   // The tab title names the selected area, e.g. "Accra Onset - Accra Metro District, Ghana".
   const { layer, selection } = subseasonal;
+  // Same as the title in app/layout.tsx; shown until an area is selected on the 46-day map.
+  const defaultTitle = useSiteContent().site.title;
   const pageTitle = useMemo(() => {
     if (!isSubseasonal || !run || !selection) {
-      return DEFAULT_PAGE_TITLE;
+      return defaultTitle;
     }
     const layerName = layerLabel(run, layer);
     if (selection.kind === "area" && selection.level === "region") {
       return `${selection.name} ${layerName} - ${selection.name} Region, Ghana`;
     }
     if (!districtFeatures) {
-      return DEFAULT_PAGE_TITLE;
+      return defaultTitle;
     }
     // A restored link names the district before the map resolves its key, so match by name too.
     const district =
@@ -303,10 +304,10 @@ export function DashboardShell() {
             isPointInGeometry(selection.latitude, selection.longitude, feature.geometry),
           );
     if (!district) {
-      return DEFAULT_PAGE_TITLE;
+      return defaultTitle;
     }
     return `${district.properties.display_name} ${layerName} - ${districtFullName(district.properties)}, Ghana`;
-  }, [districtFeatures, isSubseasonal, layer, run, selection]);
+  }, [defaultTitle, districtFeatures, isSubseasonal, layer, run, selection]);
 
   useEffect(() => {
     document.title = pageTitle;

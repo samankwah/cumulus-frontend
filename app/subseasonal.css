@@ -2332,8 +2332,35 @@
 }
 
 .control-select-menu.ss-crop-menu button {
+  justify-content: space-between;
+  gap: 12px;
   min-height: 38px;
+  border-radius: 11px;
   font-size: 0.94rem;
+}
+
+/* Highlight and selection as in the model menu (pill-menu): a soft row, the choice in blue with a tick. */
+.control-select-menu.ss-crop-menu button:hover,
+.control-select-menu.ss-crop-menu button:focus-visible {
+  border-color: transparent;
+  background: var(--map-panel-surface-soft);
+  box-shadow: none;
+}
+
+.control-select-menu.ss-crop-menu button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-teal);
+}
+
+.control-select-menu.ss-crop-menu button.selected {
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent-strong);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.control-select-menu.ss-crop-menu button.selected:hover {
+  background: var(--map-panel-surface-soft);
 }
 
 .ss-advisory-head {

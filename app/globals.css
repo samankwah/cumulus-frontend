@@ -2305,3 +2305,66 @@ button {
     max-height: none;
   }
 }
+
+/* Announcements from the admin pages: a stack of notices floating over the top of the map. */
+.announcements {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 1200;
+  display: grid;
+  gap: 6px;
+  width: min(640px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.announcement {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 12px;
+  border-left: 4px solid var(--accent);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 8px 24px rgba(30, 42, 51, 0.18);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+  pointer-events: auto;
+}
+
+.announcement.level-warning {
+  border-left-color: var(--accent-amber);
+}
+
+.announcement.level-urgent {
+  border-left-color: #d64545;
+}
+
+.announcement p {
+  margin: 0;
+  flex: 1;
+}
+
+.announcement a {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.announcement button {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.announcement button:hover {
+  background: var(--panel-soft);
+}

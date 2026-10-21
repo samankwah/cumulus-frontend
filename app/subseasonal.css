@@ -2331,6 +2331,20 @@
   border-radius: 18px;
 }
 
+.control-select-menu.ss-crop-menu.up {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+/*
+ * Each drawer section animates in, which makes it its own layer, painted in order; raise the
+ * advisory while its crop menu is open so the sections after it ("About this data") can't cover it.
+ */
+.ss-advisory:has(.ss-crop-select.open) {
+  position: relative;
+  z-index: 5;
+}
+
 .control-select-menu.ss-crop-menu button {
   justify-content: space-between;
   gap: 12px;

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, u
 import type { ReactNode } from "react";
 
 import { Icon } from "@/components/admin/icons";
+import { Select } from "@/components/admin/select";
 
 /* ------------------------------------------------------------------------------------------
  * Form fields for the admin pages. A field given a `path` (e.g. "about.body", "2.label") picks
@@ -285,20 +286,7 @@ export function SelectInput<T extends string>({
       onReset={defaultValue !== undefined ? () => onChange(defaultValue) : undefined}
     >
       {({ id, describedBy, invalid }) => (
-        <select
-          id={id}
-          className="adm-input adm-select"
-          value={value}
-          aria-invalid={invalid || undefined}
-          aria-describedby={describedBy}
-          onChange={(event) => onChange(event.target.value as T)}
-        >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <Select id={id} value={value} onChange={onChange} options={options} describedBy={describedBy} invalid={invalid} />
       )}
     </Field>
   );
@@ -530,32 +518,20 @@ export function MonthDayInput({
   const set = (m: number, d: number) => onChange(`${String(m).padStart(2, "0")}-${String(Math.min(d, DAYS_IN_MONTH[m - 1])).padStart(2, "0")}`);
   return (
     <div className="adm-monthday" role="group" aria-label={label}>
-      <select
-        className="adm-input adm-select"
-        aria-label={`${label}: day`}
-        aria-invalid={invalid || undefined}
-        value={safeDay}
-        onChange={(event) => set(safeMonth, Number(event.target.value))}
-      >
-        {Array.from({ length: maxDay }, (_, index) => (
-          <option key={index + 1} value={index + 1}>
-            {index + 1}
-          </option>
-        ))}
-      </select>
-      <select
-        className="adm-input adm-select"
-        aria-label={`${label}: month`}
-        aria-invalid={invalid || undefined}
-        value={safeMonth}
-        onChange={(event) => set(Number(event.target.value), safeDay)}
-      >
-        {MONTHS.map((name, index) => (
-          <option key={name} value={index + 1}>
-            {name}
-          </option>
-        ))}
-      </select>
+      <Select
+        ariaLabel={`${label}: day`}
+        invalid={invalid}
+        value={String(safeDay)}
+        onChange={(day) => set(safeMonth, Number(day))}
+        options={Array.from({ length: maxDay }, (_, index) => ({ value: String(index + 1), label: String(index + 1) }))}
+      />
+      <Select
+        ariaLabel={`${label}: month`}
+        invalid={invalid}
+        value={String(safeMonth)}
+        onChange={(month) => set(Number(month), safeDay)}
+        options={MONTHS.map((name, index) => ({ value: String(index + 1), label: name }))}
+      />
     </div>
   );
 }

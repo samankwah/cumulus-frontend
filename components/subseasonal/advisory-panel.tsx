@@ -90,6 +90,11 @@ function CropPicker({ crop, onChange }: { crop: CropKey; onChange: (crop: CropKe
               }}
             >
               {option}
+              {key === crop ? (
+                <svg className="ss-pill-check" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                  <path d="m5 10.5 3.2 3.2L15 7" />
+                </svg>
+              ) : null}
             </button>
           ))}
         </div>

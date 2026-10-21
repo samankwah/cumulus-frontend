@@ -28,7 +28,7 @@
   --a-radius-sm: 7px;
   --a-shadow: 0 1px 2px rgba(23, 33, 43, 0.05);
   --a-shadow-lg: 0 12px 32px rgba(23, 33, 43, 0.16), 0 2px 6px rgba(23, 33, 43, 0.06);
-  --a-sidebar: 244px;
+  --a-sidebar: 256px;
 
   min-height: 100dvh;
   background: var(--a-bg);
@@ -121,10 +121,30 @@
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  padding: 16px 12px;
+  padding: 0 12px 16px;
   background: var(--a-surface);
   border-right: 1px solid var(--a-border);
+  /* Only the links scroll, so the account menu can open over the page. */
+  z-index: 20;
+}
+
+/* The logo strip lines up with the top bar, so sidebar and top bar read as one frame. */
+.adm-sidebar > .adm-logo {
+  flex: none;
+  height: 60px;
+  margin: 0 -12px 8px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--a-border);
+}
+
+.adm-sidebar > nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
 }
 
 .adm-logo {
@@ -162,7 +182,21 @@
 }
 
 .adm-nav-group {
-  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 22px;
+}
+
+.adm-nav-group:first-child {
+  margin-top: 12px;
+}
+
+/* People sits at the foot of the sidebar, apart from the content sections. */
+.adm-nav-group.pinned {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--a-border);
 }
 
 .adm-nav-group h3 {
@@ -178,7 +212,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 10px;
+  padding: 8px 10px;
   border-radius: var(--a-radius-sm);
   color: var(--a-muted) !important;
   font-weight: 500;
@@ -201,8 +235,184 @@
 
 .adm-sidebar-foot {
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--a-border);
+}
+
+/* Account menu: top right, opening downwards. */
+
+.adm-account {
+  position: relative;
+}
+
+.adm-account-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 260px;
+  height: 44px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--a-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.adm-account-button:hover,
+.adm-account-button.open {
+  background: var(--a-subtle);
+  border-color: var(--a-border);
+}
+
+.adm-account-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.adm-account-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+
+.adm-account-text span {
+  color: var(--a-muted);
+  font-size: 12px;
+}
+
+.adm-account-chevron {
+  flex: none;
+  color: var(--a-faint);
+  transition: transform 0.15s;
+}
+
+.adm-account-button.open .adm-account-chevron {
+  transform: rotate(180deg);
+}
+
+.adm-account-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  border: 1px solid var(--a-border);
+  border-radius: 12px;
+  background: var(--a-surface);
+  box-shadow: var(--a-shadow-lg);
+  overflow: hidden;
+  transform-origin: top right;
+  animation: adm-menu-in 0.14s ease;
+}
+
+@keyframes adm-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+.adm-account-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--a-border);
+}
+
+.adm-account-who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.4;
+}
+
+.adm-account-who strong,
+.adm-account-who span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-account-who strong {
+  font-size: 14.5px;
+}
+
+.adm-account-who span {
+  color: var(--a-muted);
+  font-size: 13px;
+}
+
+.adm-account-who .adm-account-role {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--a-accent-soft);
+  color: var(--a-accent-text);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.adm-account-items {
+  padding: 6px;
+}
+
+.adm-account-items + .adm-account-items {
+  border-top: 1px solid var(--a-border);
+}
+
+.adm-account-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--a-text) !important;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.adm-account-item svg {
+  color: var(--a-muted);
+}
+
+.adm-account-item:hover,
+.adm-account-item:focus-visible {
+  background: var(--a-subtle);
+  box-shadow: none;
+}
+
+.adm-account-item.danger {
+  color: var(--a-danger) !important;
+}
+
+.adm-account-item.danger svg {
+  color: var(--a-danger);
+}
+
+.adm-account-item.danger:hover,
+.adm-account-item.danger:focus-visible {
+  background: var(--a-danger-soft);
+}
+
+.adm-account-item:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .adm-me {
@@ -251,17 +461,69 @@
   font-size: 15px;
 }
 
+/* Top bar: where you are, the live site, and your account. */
 .adm-topbar {
-  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 60px;
+  padding: 0 28px 0 40px;
+  background: var(--a-surface);
+  border-bottom: 1px solid var(--a-border);
+}
+
+.adm-topbar-start,
+.adm-topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.adm-menu-button,
+.adm-topbar-logo {
+  display: none !important;
+}
+
+.adm-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--a-muted);
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+.adm-crumbs svg {
+  color: var(--a-faint);
+}
+
+.adm-crumbs strong {
+  color: var(--a-text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adm-topbar-divider {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--a-border);
 }
 
 .adm-main {
   min-width: 0;
-  padding: 32px 40px 120px;
+  padding: 28px 40px 120px;
 }
 
 .adm-main-inner {
-  max-width: 960px;
+  max-width: 1280px;
   margin: 0 auto;
 }
 
@@ -1666,7 +1928,7 @@
 
 .adm-pick-list {
   position: sticky;
-  top: 24px;
+  top: 84px;
   padding: 6px;
 }
 
@@ -1754,7 +2016,7 @@
 
 .adm-msg-toc {
   position: sticky;
-  top: 24px;
+  top: 140px;
   display: grid;
   gap: 2px;
 }
@@ -1783,7 +2045,7 @@
 
 .adm-toolbar {
   position: sticky;
-  top: 0;
+  top: 60px;
   z-index: 10;
   display: flex;
   flex-wrap: wrap;
@@ -1813,7 +2075,7 @@
 
 .adm-msg-group {
   margin-bottom: 20px;
-  scroll-margin-top: 80px;
+  scroll-margin-top: 140px;
 }
 
 .adm-msg-group > header {
@@ -1942,6 +2204,12 @@
   margin-bottom: 16px;
   border-bottom: 1px solid var(--a-border);
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.adm-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .adm-tab {
@@ -1969,7 +2237,7 @@
   position: absolute;
   left: 10px;
   right: 10px;
-  bottom: -1px;
+  bottom: 0;
   height: 2px;
   border-radius: 2px;
   background: var(--a-accent);
@@ -2213,20 +2481,36 @@
   }
 
   .adm-topbar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    gap: 8px;
     height: 56px;
-    padding: 0 12px;
-    background: var(--a-surface);
-    border-bottom: 1px solid var(--a-border);
+    padding: 0 10px 0 8px;
+  }
+
+  .adm-menu-button {
+    display: inline-flex !important;
+  }
+
+  .adm-topbar-logo {
+    display: block !important;
   }
 
   .adm-topbar .adm-logo {
     padding: 0;
+  }
+
+  .adm-crumbs,
+  .adm-live-link,
+  .adm-topbar-divider,
+  .adm-account-text,
+  .adm-account-chevron {
+    display: none !important;
+  }
+
+  .adm-account-button {
+    padding: 4px;
+  }
+
+  .adm-toolbar {
+    top: 56px;
   }
 
   .adm-main {
@@ -2344,4 +2628,111 @@
 .adm-preview mark.unknown {
   background: var(--a-danger-soft);
   color: var(--a-danger);
+}
+
+
+/* ---------------------------------------------------------------------- styled dropdowns */
+
+.adm-select-root {
+  position: relative;
+  min-width: 0;
+}
+
+.adm-select-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.adm-select-button.open {
+  border-color: var(--a-accent);
+  box-shadow: var(--a-focus);
+}
+
+.adm-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-select-chevron {
+  flex: none;
+  color: var(--a-muted);
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+
+.adm-select-button.open .adm-select-chevron {
+  transform: rotate(-90deg);
+}
+
+.adm-select-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(23, 33, 43, 0.12);
+}
+
+.adm-select-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 35;
+  min-width: 100%;
+  max-height: 280px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--a-border);
+  border-radius: 10px;
+  background: var(--a-surface);
+  box-shadow: var(--a-shadow-lg);
+  animation: adm-menu-in 0.12s ease;
+}
+
+.adm-select-list.above {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.adm-select-list:focus {
+  outline: none;
+}
+
+.adm-select-list li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: var(--a-text);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.adm-select-list li.active {
+  background: var(--a-subtle);
+}
+
+.adm-select-list li.selected {
+  color: var(--a-accent-text);
+  font-weight: 600;
+}
+
+.adm-select-label {
+  flex: 1;
+}
+
+.adm-select-check {
+  flex: none;
+  color: var(--a-accent);
 }

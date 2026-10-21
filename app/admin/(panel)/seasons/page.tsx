@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AdvisoryPreview } from "@/components/admin/advisory-preview";
 import { DocumentEditor } from "@/components/admin/document-editor";
 import { MonthDayInput, TextInput, fieldId } from "@/components/admin/fields";
+import { Select } from "@/components/admin/select";
 import { Button } from "@/components/admin/ui";
 import type { AdvisoryContent, SeasonPeriod, Stage } from "@/lib/content/advisory-content";
 
@@ -176,18 +177,12 @@ export default function SeasonsPage() {
                         placeholder="e.g. Main season"
                         onChange={(event) => update(index, { season: event.target.value })}
                       />
-                      <select
-                        className="adm-input adm-select"
-                        aria-label={`Period ${index + 1} crop stage`}
+                      <Select<Stage>
+                        ariaLabel={`Period ${index + 1} crop stage`}
                         value={period.stage}
-                        onChange={(event) => update(index, { stage: event.target.value as Stage })}
-                      >
-                        {STAGES.map((stage) => (
-                          <option key={stage.value} value={stage.value}>
-                            {stage.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(stage) => update(index, { stage })}
+                        options={STAGES.map((stage) => ({ value: stage.value, label: stage.label, swatch: stage.color }))}
+                      />
                       <Button
                         variant="ghost"
                         size="sm"

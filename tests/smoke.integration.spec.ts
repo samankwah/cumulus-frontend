@@ -158,7 +158,8 @@ test("46-day IFS-UNet view renders real tiles, area values and series from the b
   await expect(page.getByTestId("subseasonal-advisory")).toBeVisible();
 
   await page.getByTestId("ss-layer-dry_spell_days").click();
-  await expect(page.getByTestId("subseasonal-legend")).toContainText("days");
-  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Dry-spell days");
+  // Spells default to the chance of a spell of the official length (5+ days) over the period.
+  await expect(page.getByTestId("subseasonal-legend")).toContainText("%");
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("dry spell");
   await expect(page.getByTestId("subseasonal-calendar").locator("button")).toHaveCount(runs.runs[0].lead_days);
 });

@@ -10,11 +10,14 @@ import {
   formatIssueDate,
   LAYER_FALLBACK_LABELS,
   LAYER_SHORT_LABELS,
+  modelGrid,
+  resolutionText,
 } from "@/lib/subseasonal";
-import type { SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
+import type { ModelAxisOption, SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
 import { ForecastTimeline } from "@/components/subseasonal/forecast-timeline";
 import { PillMenu } from "@/components/subseasonal/pill-menu";
+import { SpellControls } from "@/components/subseasonal/spell-controls";
 import { StatControls } from "@/components/subseasonal/stat-controls";
 import { SteppedLegend } from "@/components/subseasonal/stepped-legend";
 
@@ -29,9 +32,9 @@ function layerHint(state: SubseasonalState, layer: SubseasonalLayerKey) {
     case "rainy_days":
       return `Days ≥${thresholds.wet_day_mm} mm`;
     case "dry_spell_days":
-      return `≥${thresholds.dry_spell_min_days} dry days`;
+      return `≥${state.spellDays.dry} dry days`;
     case "wet_spell_days":
-      return `≥${thresholds.wet_spell_min_days} wet days`;
+      return `≥${state.spellDays.wet} wet days`;
     case "extreme_rain":
       return `≥${thresholds.extreme_rain_mm ?? 50} mm a day`;
     case "onset":
@@ -93,7 +96,8 @@ export function RunBadge({ state }: { state: SubseasonalState }) {
   }
   return (
     <div className="ss-run" data-testid="subseasonal-run">
-      <ModelPicker state={state} />
+      {/* With the models described as source x downscaler, the panel's Model row carries the choice. */}
+      {modelGrid(state.models, state.model) ? null : <ModelPicker state={state} />}
       <IssueDatePicker state={state} />
       {state.activeRunId && run.run_id !== state.activeRunId ? (
         // An earlier issue chosen on purpose: say so rather than warn that it is old.
@@ -165,6 +169,138 @@ export function ModelPicker({
   );
 }
 
+/** One line under each forecast model in the menu: what it is, in plain words. */
+const FAMILY_NOTES: Record<string, string> = {
+  aurora_imerg: "Microsoft Aurora · rain calibrated to satellite",
+  aurora_era5: "Microsoft Aurora · rain calibrated to ERA5",
+  ifs: "ECMWF extended-range forecast",
+};
+
+/** Short names for the field itself, where the full "Aurora · IMERG head" would not fit. */
+const FAMILY_SHORT: Record<string, string> = {
+  aurora_imerg: "Aurora-IMERG",
+  aurora_era5: "Aurora-ERA5",
+  ifs: "ECMWF IFS",
+};
+
+function downscalingNote(option: ModelAxisOption) {
+  if (option.key === "bilinear") return "Interpolated only, no machine learning";
+  if ((option.members ?? 1) > 1) return `Ensemble of ${option.members} · gives chances`;
+  return "Machine-learnt detail · single run";
+}
+
+/**
+ * The model, as the modelling team describes it: a forecast model (the S2S source, e.g. Aurora with
+ * its IMERG-calibrated rain) and how it is downscaled to 0.1° (UNet, diffusion ensemble or plain
+ * bilinear interpolation). Two labelled menus; combinations without a run are listed but disabled.
+ * Renders nothing when the backend does not describe its models that way.
+ */
+export function ModelChoice({
+  state,
+  layout = "panel",
+}: {
+  state: SubseasonalState;
+  /** "panel": a Model row in the desktop panel; "rows": two option rows in the phone card. */
+  layout?: "panel" | "rows";
+}) {
+  const grid = modelGrid(state.models, state.model);
+  if (!grid || !state.run) {
+    return null;
+  }
+  const family = grid.families.find((item) => item.key === grid.family);
+  const method = grid.downscalers.find((item) => item.key === grid.downscaling);
+  const members = state.run.members ?? 1;
+  const choose = (modelId: string) => {
+    const next = state.models.find((item) => item.id === modelId);
+    if (next) state.selectModel(next.id);
+  };
+  const familyMenu = (
+    <PillMenu
+      className="ss-model-field"
+      label="Forecast model"
+      testId={layout === "panel" ? "ss-family" : "ss-mfamily"}
+      align="start"
+      value={grid.family}
+      onChange={(key) => {
+        const option = grid.families.find((item) => item.key === key);
+        if (option?.modelId) choose(option.modelId);
+      }}
+      trigger={
+        <span className="ss-model-field-body">
+          {layout === "panel" ? <small>Forecast model</small> : null}
+          <strong>{FAMILY_SHORT[grid.family] ?? family?.label ?? state.run.model_label}</strong>
+        </span>
+      }
+      options={grid.families.map((item) => ({
+        value: item.key,
+        label: item.label,
+        detail: item.available ? (FAMILY_NOTES[item.key] ?? undefined) : "No run yet",
+        badge: item.synthetic ? "Demo" : undefined,
+        disabled: !item.available,
+      }))}
+    />
+  );
+  const methodMenu = (
+    <PillMenu
+      className="ss-model-field"
+      label="Downscaling"
+      testId={layout === "panel" ? "ss-downscaling" : "ss-mdownscaling"}
+      align="end"
+      value={grid.downscaling}
+      onChange={(key) => {
+        const option = grid.downscalers.find((item) => item.key === key);
+        if (option?.modelId) choose(option.modelId);
+      }}
+      trigger={
+        <span className="ss-model-field-body">
+          {layout === "panel" ? <small>Downscaling</small> : null}
+          <strong>
+            {method?.label ?? grid.downscaling}
+            {members > 1 ? <em className="ss-model-members">×{members}</em> : null}
+            {state.run.synthetic ? (
+              <em className="ss-run-demo" data-testid="ss-demo-badge" title="Synthetic demo data, not a real forecast">
+                Demo
+              </em>
+            ) : null}
+          </strong>
+        </span>
+      }
+      options={grid.downscalers.map((item) => ({
+        value: item.key,
+        label: item.label,
+        detail: item.available ? downscalingNote(item) : `No ${family?.label ?? "such"} run yet`,
+        badge: item.synthetic ? "Demo" : undefined,
+        disabled: !item.available,
+      }))}
+    />
+  );
+  if (layout === "rows") {
+    return (
+      <>
+        <div className="ss-option-row">
+          <span className="ss-option-label">Model</span>
+          <div className="ss-model-inline">{familyMenu}</div>
+        </div>
+        <div className="ss-option-row">
+          <span className="ss-option-label">Downscale</span>
+          <div className="ss-model-inline">{methodMenu}</div>
+        </div>
+      </>
+    );
+  }
+  return (
+    <div className="control-group ss-model-group">
+      <div className="control-field">
+        <span className="control-label">Model</span>
+        <div className="ss-model-fields" data-testid="ss-model-choice">
+          {familyMenu}
+          {methodMenu}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Forecast issue date (the model run's start). A pill in the run badge; with more than one run kept
  * it opens a menu of the kept runs, newest first.
@@ -232,6 +368,7 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
 
   return (
     <>
+      <ModelChoice state={state} />
       <div className="control-group ss-layer-group">
         <div className="control-field">
           <span className="control-label" id="ss-layer-label">
@@ -304,6 +441,7 @@ export function SubseasonalPanel({ state }: { state: SubseasonalState }) {
       ) : null}
 
       <StatControls state={state} variant="panel" />
+      <SpellControls state={state} variant="panel" />
     </>
   );
 }
@@ -371,7 +509,9 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
       </div>
       {isOptionsOpen ? (
         <div className="ss-mobile-options" id="ss-mobile-options">
-          {state.models.length > 1 ? (
+          {modelGrid(state.models, state.model) ? (
+            <ModelChoice state={state} layout="rows" />
+          ) : state.models.length > 1 ? (
             <div className="ss-option-row">
               <span className="ss-option-label">Model</span>
               <div className="ss-run ss-run-inline">
@@ -409,6 +549,12 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
             <div className="ss-option-row ss-option-row-stack">
               <span className="ss-option-label">Show</span>
               <StatControls state={state} variant="compact" />
+            </div>
+          ) : null}
+          {state.spellKind ? (
+            <div className="ss-option-row ss-option-row-stack">
+              <span className="ss-option-label">Spell length</span>
+              <SpellControls state={state} variant="compact" />
             </div>
           ) : null}
           <div className="ss-option-row">
@@ -524,7 +670,14 @@ function DockBody({ state }: { state: SubseasonalState }) {
           unit={layer.timeline_unit}
         />
       ) : null}
-      {layer.statistic === "median" || layer.statistic === "mean" || (layer.statistic === "probability" && layer.layer === "rainfall") ? (
+      {layer.observed ? (
+        // An elapsed day that has been observed: the map shows what fell, not the forecast.
+        <p className="ss-dock-stat observed" data-testid="ss-dock-observed">
+          <span className="ss-observed-chip">Observed</span>
+          {run.observed_source ?? "Satellite rainfall"}
+          {run.observed_synthetic ? <em className="ss-run-demo">Demo</em> : null}
+        </p>
+      ) : layer.statistic === "median" || layer.statistic === "mean" || (layer.statistic === "probability" && layer.layer === "rainfall") ? (
         <p className="ss-dock-stat" data-testid="ss-dock-stat">
           {layer.statistic === "median"
             ? `Ensemble median of ${layer.members} members`
@@ -534,6 +687,9 @@ function DockBody({ state }: { state: SubseasonalState }) {
         </p>
       ) : null}
       <SteppedLegend layer={layer} />
+      <p className="ss-dock-resolution" data-testid="ss-dock-resolution">
+        {resolutionText(run, Boolean(layer.observed))}
+      </p>
       {state.layerError ? (
         <p className="control-inline-note" role="status">
           {state.layerError}{" "}

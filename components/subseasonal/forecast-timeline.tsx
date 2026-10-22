@@ -14,6 +14,8 @@ type Frame = {
   startDate: string;
   isWeekStart: boolean;
   partial: boolean;
+  /** Observed rain (elapsed) rather than forecast: a whole observed week, or an observed day. */
+  observed: boolean;
 };
 
 function buildFrames(run: SubseasonalRun, aggregation: SubseasonalAggregation): Frame[] {
@@ -26,6 +28,7 @@ function buildFrames(run: SubseasonalRun, aggregation: SubseasonalAggregation): 
       startDate: week.start_date,
       isWeekStart: true,
       partial: week.partial,
+      observed: (week.observed_days ?? 0) >= week.days,
     }));
   }
   return run.days.map((day) => ({
@@ -36,6 +39,7 @@ function buildFrames(run: SubseasonalRun, aggregation: SubseasonalAggregation): 
     startDate: day.date,
     isWeekStart: (day.day - 1) % 7 === 0,
     partial: false,
+    observed: Boolean(day.observed),
   }));
 }
 
@@ -154,6 +158,7 @@ export function ForecastTimeline({
             {aggregation === "weekly"
               ? current.label.split(", ")[0]
               : formatDay(current.startDate, "weekday")}
+            {current.observed ? <span className="ss-observed-chip" data-testid="timeline-observed">Observed</span> : null}
           </strong>
           <span>
             {aggregation === "weekly"
@@ -180,6 +185,7 @@ export function ForecastTimeline({
                 frame.index < current.index ? "past" : "",
                 frame.isWeekStart && frame.index > 1 && aggregation === "daily" ? "week-start" : "",
                 frame.partial ? "partial" : "",
+                frame.observed ? "observed" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
@@ -188,7 +194,7 @@ export function ForecastTimeline({
                 width: barWidth,
                 height: `${Math.max(6, ((frame.value ?? 0) / maxValue) * 100)}%`,
               }}
-              title={`${frame.label}: ${describe(frame.value)}`}
+              title={`${frame.label}: ${frame.observed && !values ? `${formatAmount(frame.value, "mm")} observed, Ghana mean` : describe(frame.value)}${frame.observed && values ? " (observed)" : ""}`}
             />
           ))}
         </div>

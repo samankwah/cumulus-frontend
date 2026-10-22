@@ -20,6 +20,9 @@ export type SubseasonalThresholds = {
   onset_max_dry_days?: number;
   /** Extreme rain layer: 24-hour rain at or above this. */
   extreme_rain_mm?: number;
+  /** The official spell lengths, when the series was asked for others. */
+  default_dry_spell_days?: number | null;
+  default_wet_spell_days?: number | null;
 };
 
 /** Ensemble spread of a daily or weekly amount (mm). */
@@ -71,6 +74,13 @@ export type SubseasonalDay = {
   chance?: Record<string, number | null> | null;
   extreme_by_date?: number | null;
   total_by_date?: Record<string, number | null> | null;
+  /** An elapsed day holding observed rain (IMERG) instead of forecast; its chances are 0 or 100. */
+  observed?: boolean;
+  /** Observed days: what had been forecast (members' mean), for comparison. */
+  forecast_value?: number | null;
+  /** % that a dry / wet spell begins on this day, and that one begins within `spell_ahead_days`. */
+  spell_start_prob?: { dry: number; wet: number } | null;
+  spell_ahead_prob?: { dry: number; wet: number } | null;
 };
 
 export type SubseasonalWeek = {
@@ -88,6 +98,10 @@ export type SubseasonalWeek = {
   extreme_prob?: number | null;
   /** Ensemble only: each member's days in a dry spell / wet spell / with rain this week, as a spread. */
   day_counts?: { dry_spell?: SubseasonalSpread | null; wet_spell?: SubseasonalSpread | null; rainy?: SubseasonalSpread | null } | null;
+  /** Days of this week holding observed rain (elapsed), the rest being forecast. */
+  observed_days?: number;
+  /** % with a dry / wet spell of the chosen length touching this week. */
+  spell_chance?: { dry: number; wet: number } | null;
 };
 
 /** Which of a week's day counts a layer shows: dry-spell days, wet-spell days or rain days. */
@@ -124,6 +138,9 @@ export type SubseasonalRun = {
   source_id: string;
   source_label: string;
   model_label: string;
+  /** The S2S source and the downscaler, e.g. "Aurora · IMERG head" and "UNet"; missing from older backends. */
+  family_label?: string | null;
+  downscaling_label?: string | null;
   ensemble: string;
   /** 1 for a single run; missing from older backends. */
   members?: number;
@@ -143,6 +160,14 @@ export type SubseasonalRun = {
   unit: string;
   grid_resolution_degrees: number | null;
   thresholds: SubseasonalThresholds;
+  /** The last elapsed day holding observed rain, its source, and a version that changes with it. */
+  observed_through?: string | null;
+  observed_source?: string | null;
+  observed_version?: string | null;
+  /** Made-up observations (local demo only). */
+  observed_synthetic?: boolean;
+  /** Spell lengths a user may choose, [shortest, longest] days per kind; missing from older backends. */
+  spell_days_range?: { dry: [number, number]; wet: [number, number] } | null;
   days: SubseasonalDay[];
   weeks: SubseasonalWeek[];
   layers: SubseasonalLayerOption[];
@@ -155,6 +180,11 @@ export type SubseasonalModelOption = {
   label: string;
   source_label: string;
   description?: string | null;
+  /** The S2S source ("aurora_imerg") and downscaler ("unet") this model combines; older backends omit them. */
+  family?: string | null;
+  family_label?: string | null;
+  downscaling?: string | null;
+  downscaling_label?: string | null;
   available: boolean;
   active_run_id?: string | null;
   init_time?: string | null;
@@ -166,6 +196,109 @@ export type SubseasonalModelsResponse = {
   default_model: string;
   models: SubseasonalModelOption[];
 };
+
+/** One choice on either axis of the model picker: an S2S source or a downscaler. */
+export type ModelAxisOption = {
+  key: string;
+  label: string;
+  /** False when no model on this choice has a run yet (for a downscaler: none with the chosen source). */
+  available: boolean;
+  /** The model this choice switches to; null when unavailable. */
+  modelId: string | null;
+  /** Ensemble size of that model, when known. */
+  members: number | null;
+  synthetic: boolean;
+};
+
+/** The model registry seen as two choices, the way the modelling team describes a forecast. */
+export type ModelGrid = {
+  family: string;
+  downscaling: string;
+  families: ModelAxisOption[];
+  downscalers: ModelAxisOption[];
+};
+
+/** Downscalers in a fixed order: the default UNet, the ensemble, then the no-ML baseline. */
+const DOWNSCALING_ORDER = ["unet", "diffusion", "bilinear"];
+
+/**
+ * Splits the flat model list into S2S source × downscaler around the current model. Null when the
+ * backend does not describe its models that way (the picker then falls back to one list).
+ *
+ * Switching source keeps the downscaler when the new source has it, else falls back to the UNet,
+ * then to whatever that source has.
+ */
+export function modelGrid(models: SubseasonalModelOption[], currentId: string | null): ModelGrid | null {
+  if (models.length < 2 || models.some((item) => !item.family || !item.downscaling)) {
+    return null;
+  }
+  const current = models.find((item) => item.id === currentId) ?? models[0];
+  const family = current.family as string;
+  const downscaling = current.downscaling as string;
+  const familyKeys = [...new Set(models.map((item) => item.family as string))];
+  const methodKeys = [...new Set(models.map((item) => item.downscaling as string))].sort(
+    (a, b) => orderOf(DOWNSCALING_ORDER, a) - orderOf(DOWNSCALING_ORDER, b),
+  );
+  const find = (familyKey: string, method: string) =>
+    models.find((item) => item.family === familyKey && item.downscaling === method && item.available) ?? null;
+  const option = (key: string, label: string, match: SubseasonalModelOption | null): ModelAxisOption => ({
+    key,
+    label,
+    available: match !== null,
+    modelId: match?.id ?? null,
+    members: match?.members ?? null,
+    synthetic: Boolean(match?.synthetic),
+  });
+  const families = familyKeys.map((key) => {
+    const match =
+      find(key, downscaling) ?? find(key, "unet") ?? methodKeys.map((method) => find(key, method)).find(Boolean) ?? null;
+    return option(key, models.find((item) => item.family === key)?.family_label ?? key, match);
+  });
+  const downscalers = methodKeys.map((key) =>
+    option(key, models.find((item) => item.downscaling === key)?.downscaling_label ?? key, find(family, key)),
+  );
+  return { family, downscaling, families, downscalers };
+}
+
+/** Whether the run was only interpolated (no downscaling model): its real detail is the S2S model's own grid. */
+export function isInterpolatedRun(run: Pick<SubseasonalRun, "downscaling_label" | "provenance">) {
+  return run.downscaling_label === "Bilinear" || Boolean(run.provenance?.model_type?.includes("bilinear"));
+}
+
+/**
+ * The map's resolution in words: "0.1° grid (~11 km)", noting when a Bilinear run's real detail is
+ * coarser, and when the shown day is observed rain regridded from IMERG's 0.25°.
+ */
+export function resolutionText(run: Pick<SubseasonalRun, "grid_resolution_degrees" | "downscaling_label" | "provenance">, observed = false) {
+  const degrees = run.grid_resolution_degrees ?? 0.1;
+  const parts = [`${degrees}° grid (~${Math.round(degrees * 111)} km)`];
+  if (observed) parts.push("observed at 0.25°, regridded");
+  else if (isInterpolatedRun(run)) parts.push("interpolated from the model's own coarser grid");
+  return parts.join(" · ");
+}
+
+/** The run's model in full, "Aurora · IMERG head · UNet", or its short label on older backends. */
+export function runModelName(run: Pick<SubseasonalRun, "model_label" | "family_label" | "downscaling_label">) {
+  return run.family_label && run.downscaling_label ? `${run.family_label} · ${run.downscaling_label}` : run.model_label;
+}
+
+function orderOf(order: string[], key: string) {
+  const position = order.indexOf(key);
+  return position < 0 ? order.length : position;
+}
+
+/** Spell layers, for a week or the whole run: the chance of an N+ day spell, or the days inside such spells. */
+export type SpellStat = "chance" | "days";
+export const SPELL_STATS: SpellStat[] = ["chance", "days"];
+/** Chosen spell lengths; null keeps the official definition. */
+export type SpellDays = { dry: number | null; wet: number | null };
+/** Lengths offered when the backend does not say (older deployments). */
+export const DEFAULT_SPELL_DAYS_RANGE: { dry: [number, number]; wet: [number, number] } = { dry: [2, 15], wet: [2, 10] };
+
+/** The spell kind a layer is about, or null for the other layers. */
+export function spellKindOf(layer: SubseasonalLayerKey): SpellKind | null {
+  return layer === "dry_spell_days" ? "dry" : layer === "wet_spell_days" ? "wet" : null;
+}
 
 /** How an ensemble's rainfall is mapped: the members' mean, their median, or the chance of an amount. */
 export type RainStat = "mean" | "median" | "chance";
@@ -238,6 +371,12 @@ export type SubseasonalLayer = {
   /** Ensemble rainfall median / chance: the national value per day or week, for the dock timeline. */
   timeline?: (number | null)[] | null;
   timeline_unit?: string | null;
+  /** A daily map of an elapsed day that has been observed: it shows observed rain, not forecast. */
+  observed?: boolean;
+  observed_days?: number;
+  /** Spell layers: the spell length shown, and for a week or the run "chance" or "days". */
+  spell_days?: number | null;
+  spell_stat?: SpellStat | null;
 };
 
 export type SubseasonalAreaValues = {
@@ -300,6 +439,14 @@ export type SubseasonalSeries = {
   member_totals?: (number | null)[] | null;
   /** Whole run, per cell and averaged over the place: % reaching each whole-run amount (keys mm). */
   total_chance?: Record<string, number | null> | null;
+  /** Leading days holding observed rain (IMERG), the last of them, and where it comes from. */
+  observed_days?: number;
+  observed_through?: string | null;
+  observed_source?: string | null;
+  /** The window (days) of `spell_ahead_prob`. */
+  spell_ahead_days?: number | null;
+  /** % with a dry / wet spell of the chosen length anywhere in the run. */
+  spell_chance_total?: { dry: number; wet: number } | null;
 };
 
 /** The ensemble statistic the map shows, so the drawer's charts and headline can follow it. */
@@ -559,7 +706,12 @@ export type LayerQuery = {
   /** Model id; null = the backend's default model. */
   model: string | null;
   runId: string;
+  /** The run's observed-rain version, when observations fill its elapsed days. */
+  obs?: string | null;
   layer: SubseasonalLayerKey;
+  /** Spell layers: the spell length (null = official), and for a week or the run, chance or days. */
+  spellDays?: number | null;
+  spellStat?: SpellStat | null;
   aggregation: SubseasonalAggregation;
   index: number;
   /** Ensemble rainfall only. */
@@ -576,8 +728,12 @@ function layerParams(query: LayerQuery) {
     index: String(query.index),
   };
   if (query.model) params.model = query.model;
+  // Run responses are cached for good; observations arriving change them, so they key the cache too.
+  if (query.obs) params.obs = query.obs;
   if (query.stat) params.stat = query.stat;
   if (query.stat === "chance" && query.threshold !== null && query.threshold !== undefined) params.threshold = String(query.threshold);
+  if (query.spellDays) params.spell_days = String(query.spellDays);
+  if (query.spellStat && query.aggregation !== "daily") params.stat = query.spellStat;
   return params;
 }
 
@@ -602,22 +758,64 @@ export function getSubseasonalAreaValues(query: LayerQuery & { level: Subseasona
   return getJson("/subseasonal/area-values", { ...layerParams(query), level: query.level }, isAreaValues, { signal });
 }
 
-export function sampleSubseasonalPoint(model: string | null, runId: string, latitude: number, longitude: number, signal?: AbortSignal) {
+export function sampleSubseasonalPoint(
+  model: string | null,
+  runId: string,
+  latitude: number,
+  longitude: number,
+  signal?: AbortSignal,
+  obs?: string | null,
+  spellDays?: SpellDays,
+) {
   return getJson(
     "/subseasonal/sample",
-    { ...modelParam(model), run_id: runId, latitude: latitude.toFixed(4), longitude: longitude.toFixed(4) },
+    {
+      ...modelParam(model),
+      run_id: runId,
+      ...obsParam(obs),
+      ...spellParams(spellDays),
+      latitude: latitude.toFixed(4),
+      longitude: longitude.toFixed(4),
+    },
     isSeries,
     { signal },
   );
 }
 
-export function sampleSubseasonalArea(model: string | null, runId: string, level: SubseasonalAreaLevel, name: string, signal?: AbortSignal) {
-  return getJson("/subseasonal/area", { ...modelParam(model), run_id: runId, level, name }, isSeries, { signal });
+export function sampleSubseasonalArea(
+  model: string | null,
+  runId: string,
+  level: SubseasonalAreaLevel,
+  name: string,
+  signal?: AbortSignal,
+  obs?: string | null,
+  spellDays?: SpellDays,
+) {
+  return getJson(
+    "/subseasonal/area",
+    { ...modelParam(model), run_id: runId, ...obsParam(obs), ...spellParams(spellDays), level, name },
+    isSeries,
+    { signal },
+  );
+}
+
+function obsParam(obs: string | null | undefined): Record<string, string> {
+  return obs ? { obs } : {};
+}
+
+function spellParams(spellDays: SpellDays | undefined): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (spellDays?.dry) params.dry_spell_days = String(spellDays.dry);
+  if (spellDays?.wet) params.wet_spell_days = String(spellDays.wet);
+  return params;
 }
 
 /** Tile URL for any selection, built client-side so neighbouring days can be prefetched. */
+/** Tiles are cached for good; bumped with the backend's tile style (2: opaque, matching the legend). */
+const TILE_STYLE_VERSION = "2";
+
 export function subseasonalTileUrl(query: LayerQuery) {
-  const params = new URLSearchParams(layerParams(query));
+  const params = new URLSearchParams({ v: TILE_STYLE_VERSION, ...layerParams(query) });
   return resolveBackendUrl(`/subseasonal/tiles/{z}/{x}/{y}.png?${params.toString()}`);
 }
 
@@ -743,8 +941,24 @@ export function todayIso() {
 }
 
 /** Forecast days already gone by `today`: a run is often read a week or two after it was issued. */
-export function pastDayCount(series: SubseasonalSeries, today: string) {
+export function pastDayCount(series: Pick<SubseasonalSeries, "days">, today: string) {
   return series.days.filter((day) => day.date < today).length;
+}
+
+/**
+ * Leading days that hold observed rain (IMERG) rather than forecast: elapsed days up to the last
+ * one observed. Days after it (IMERG runs a day or two behind) are elapsed but still forecast.
+ */
+export function observedDayCount(series: Pick<SubseasonalSeries, "days">) {
+  const first = series.days.findIndex((day) => !day.observed);
+  return first === -1 ? series.days.length : first;
+}
+
+/** Slots on a weekly axis covered by the first `dayCount` days: whole weeks plus a share of the next. */
+export function weekUnits(weeks: SubseasonalWeek[], dayCount: number) {
+  if (dayCount <= 0) return 0;
+  const index = weeks.findIndex((week) => week.end_day > dayCount);
+  return index === -1 ? weeks.length : index + (dayCount - weeks[index].start_day + 1) / weeks[index].days;
 }
 
 export type SpellStatus = "past" | "now" | "coming";
@@ -779,8 +993,8 @@ export function layerLabel(run: SubseasonalRun | null, layer: SubseasonalLayerKe
 export const LAYER_FALLBACK_LABELS: Record<SubseasonalLayerKey, string> = {
   rainfall: "Rainfall",
   rainy_days: "Rainy days",
-  dry_spell_days: "Dry-spell days",
-  wet_spell_days: "Wet-spell days",
+  dry_spell_days: "Dry spells",
+  wet_spell_days: "Wet spells",
   extreme_rain: "Extreme rain",
   onset: "Onset",
 };
@@ -844,6 +1058,9 @@ export type SubseasonalUrlState = {
   threshold: number | null;
   /** A kept run other than the latest; null = the latest run. */
   run: string | null;
+  /** Spell lengths other than the official ones, and the spell statistic other than chance. */
+  spellDays?: SpellDays;
+  spellStat?: SpellStat | null;
   layer: SubseasonalLayerKey;
   aggregation: SubseasonalAggregation;
   day: number | null;
@@ -896,6 +1113,8 @@ export function readUrlState(search: string): SubseasonalUrlState {
     stat: RAIN_STATS.find((key) => key === params.get("stat")) ?? null,
     threshold: Number.isFinite(threshold) && threshold > 0 ? threshold : null,
     run: run && /^[a-z0-9_]{1,64}$/i.test(run) ? run : null,
+    spellDays: { dry: parsePositiveInt(params.get("dsd")), wet: parsePositiveInt(params.get("wsd")) },
+    spellStat: SPELL_STATS.find((key) => key === params.get("ss")) ?? null,
     view: params.get("view") === "seasonal" ? "seasonal" : "subseasonal",
     layer,
     aggregation,
@@ -912,7 +1131,7 @@ export function writeUrlState(state: SubseasonalUrlState) {
     return;
   }
   const params = new URLSearchParams(window.location.search);
-  for (const key of ["view", "model", "run", "layer", "agg", "stat", "thr", "day", "week", "lat", "lon", "area", "name"]) {
+  for (const key of ["view", "model", "run", "layer", "agg", "stat", "thr", "dsd", "wsd", "ss", "day", "week", "lat", "lon", "area", "name"]) {
     params.delete(key);
   }
   if (state.view === "seasonal") {
@@ -922,6 +1141,9 @@ export function writeUrlState(state: SubseasonalUrlState) {
     if (state.run) params.set("run", state.run);
     if (state.stat && state.stat !== "mean") params.set("stat", state.stat);
     if (state.stat === "chance" && state.threshold) params.set("thr", String(state.threshold));
+    if (state.spellDays?.dry) params.set("dsd", String(state.spellDays.dry));
+    if (state.spellDays?.wet) params.set("wsd", String(state.spellDays.wet));
+    if (state.spellStat && state.spellStat !== "chance") params.set("ss", state.spellStat);
     if (state.layer !== "rainfall") params.set("layer", state.layer);
     if (state.aggregation !== defaultAggregation(state.layer)) params.set("agg", state.aggregation);
     if (state.aggregation === "daily" && state.day) params.set("day", String(state.day));

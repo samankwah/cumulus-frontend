@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { AdvisoryPanel } from "@/components/subseasonal/advisory-panel";
 import { DataInfo } from "@/components/subseasonal/data-info";
+import { SpellControls } from "@/components/subseasonal/spell-controls";
 import { StatControls } from "@/components/subseasonal/stat-controls";
 import { DailyChanceChart, RainChart, WeeklyChart, WeeklyRainChart, WeeklyWettestDayChart } from "@/components/subseasonal/rain-chart";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
@@ -31,8 +32,9 @@ import {
   weekChance,
   weeklyExtremeChance,
   dayCountSpread,
+  observedDayCount,
 } from "@/lib/subseasonal";
-import type { SpellKind, SpellStatus, StatView, SubseasonalAggregation, SubseasonalLayerKey, SubseasonalSeries } from "@/lib/subseasonal";
+import type { SpellKind, SpellStat, SpellStatus, StatView, SubseasonalAggregation, SubseasonalLayerKey, SubseasonalSeries } from "@/lib/subseasonal";
 import { useSiteContent } from "@/lib/content/content-context";
 import type { AdvisoryContent } from "@/lib/content/advisory-content";
 import { buildSubseasonalAdvisory, isCropKey } from "@/lib/subseasonal-advisory";
@@ -149,6 +151,80 @@ function statHero(series: SubseasonalSeries, period: { aggregation: SubseasonalA
   };
 }
 
+/**
+ * The headline for an elapsed day that has been observed: what happened, not a chance. Onset keeps
+ * its own headline (it is about the whole run); null when the shown day is not an observed one.
+ */
+function observedDayHero(
+  layer: SubseasonalLayerKey,
+  series: SubseasonalSeries,
+  period: { aggregation: SubseasonalAggregation; index: number },
+): Hero | null {
+  if (period.aggregation !== "daily" || layer === "onset") {
+    return null;
+  }
+  const day = series.days[period.index - 1];
+  if (!day?.observed) {
+    return null;
+  }
+  const when = formatDay(day.date, "weekday");
+  const ensemble = isEnsemble(series);
+  const wetDay = series.thresholds.wet_day_mm;
+  const forecast =
+    day.forecast_value !== null && day.forecast_value !== undefined
+      ? `forecast${ensemble ? " mean" : ""} was ${formatAmount(day.forecast_value, "mm")}`
+      : null;
+  const whole = `Observed · day ${day.day} of ${series.days.length}`;
+  if (layer === "extreme_rain") {
+    const threshold = series.thresholds.extreme_rain_mm ?? 50;
+    return {
+      label: `${threshold} mm+ on ${when}?`,
+      value: (day.value ?? 0) >= threshold ? "Yes" : "No",
+      unit: "",
+      context: [`${formatAmount(day.value, "mm")} fell`, forecast].filter(Boolean).join(" · "),
+      whole,
+    };
+  }
+  if (layer === "rainy_days") {
+    return {
+      label: `Rain day on ${when}?`,
+      value: (day.value ?? 0) >= wetDay ? "Yes" : "No",
+      unit: "",
+      context: [`${formatAmount(day.value, "mm")} fell`, forecast].filter(Boolean).join(" · "),
+      whole,
+    };
+  }
+  if (layer === "dry_spell_days" || layer === "wet_spell_days") {
+    const kind: SpellKind = layer === "dry_spell_days" ? "dry" : "wet";
+    const chance = ensemble ? day.spell_prob?.[kind] : day.spell === kind ? 100 : 0;
+    const certain = chance === 0 || chance === 100 || chance === null || chance === undefined;
+    if (!certain) {
+      // Observed so far, but whether these days add up to a spell depends on the days ahead.
+      return {
+        label: `Chance of being in a ${kind} spell on ${when}`,
+        value: String(Math.round(chance ?? 0)),
+        unit: "%",
+        context: `${formatAmount(day.value, "mm")} fell · whether it makes a ${kind} spell depends on the coming days`,
+        whole,
+      };
+    }
+    return {
+      label: `In a ${kind} spell on ${when}?`,
+      value: chance ? "Yes" : "No",
+      unit: "",
+      context: `${formatAmount(day.value, "mm")} fell`,
+      whole,
+    };
+  }
+  return {
+    label: `Rainfall · ${when}`,
+    value: formatAmount(day.value, "mm").replace(/ mm$/, ""),
+    unit: "mm",
+    context: forecast ? forecast.charAt(0).toUpperCase() + forecast.slice(1) : "Observed rainfall",
+    whole,
+  };
+}
+
 /** Rainfall for the shown day or week, so the headline matches the map's period. */
 function rainPeriodHero(series: SubseasonalSeries, period: { aggregation: SubseasonalAggregation; index: number }): Hero | null {
   if (period.aggregation === "daily") {
@@ -202,6 +278,7 @@ function indicatorPeriodHero(
   layer: SubseasonalLayerKey,
   series: SubseasonalSeries,
   period: { aggregation: SubseasonalAggregation; index: number },
+  spellStat: SpellStat = "chance",
 ): Hero | null {
   if (layer === "extreme_rain") {
     return extremePeriodHero(series, period);
@@ -221,12 +298,19 @@ function indicatorPeriodHero(
     if (isEnsemble(series)) {
       // An ensemble answers "how likely", not yes or no.
       const chance = kind ? day.spell_prob?.[kind] : day.wet_prob;
+      const starts = kind ? day.spell_start_prob?.[kind] : null;
+      const ahead = kind ? day.spell_ahead_prob?.[kind] : null;
+      const members = `${chance === null || chance === undefined ? "–" : Math.round(((chance ?? 0) / 100) * (series.members ?? 1))} of ${series.members} members`;
       return {
         label: kind ? `Chance of being in a ${name} on ${when}` : `Chance of a rain day on ${when}`,
         value: String(Math.round(chance ?? 0)),
         unit: "%",
-        context: `${chance === null || chance === undefined ? "–" : Math.round(((chance ?? 0) / 100) * (series.members ?? 1))} of ${series.members} members · mean ${formatAmount(day.value, "mm")}`,
-        whole: `Day ${day.day} of ${series.days.length}`,
+        // Spells ahead: how likely one begins that day, and within the next two weeks.
+        context:
+          kind && starts !== null && starts !== undefined
+            ? `Starts that day ${Math.round(starts)}%${ahead !== null && ahead !== undefined ? ` · starts within ${series.spell_ahead_days ?? 14} days ${Math.round(ahead)}%` : ""}`
+            : `${members} · mean ${formatAmount(day.value, "mm")}`,
+        whole: kind && starts !== null && starts !== undefined ? members : `Day ${day.day} of ${series.days.length}`,
       };
     }
     if (!kind) {
@@ -252,6 +336,25 @@ function indicatorPeriodHero(
       whole: `Day ${day.day} of ${series.days.length}`,
     };
   }
+  if (period.aggregation === "total" && kind && spellStat === "chance" && series.spell_chance_total) {
+    // The whole run, as on the map: the chance of at least one spell of the chosen length, with the
+    // most likely one (if most members agree on one) as context.
+    const minDays = kind === "dry" ? series.thresholds.dry_spell_min_days : series.thresholds.wet_spell_min_days;
+    const chance = series.spell_chance_total[kind];
+    const today = todayIso();
+    const next = series.spells.find((item) => item.kind === kind && item.end_date >= today);
+    return {
+      label: `Chance of a ${minDays}+ day ${name} · ${series.days.length} days`,
+      value: String(Math.round(chance)),
+      unit: "%",
+      context: next
+        ? `Most likely ${formatRange(next.start_date, next.end_date)}${next.probability !== null && next.probability !== undefined ? ` (${Math.round(next.probability)}% of members)` : ""}`
+        : chance > 0
+          ? `Fewer than half of the members agree on when`
+          : `No ${minDays}+ day ${name} in ${isEnsemble(series) ? "any member" : "this run"}`,
+      whole: isEnsemble(series) ? `${Math.round((chance / 100) * (series.members ?? 1))} of ${series.members} members` : null,
+    };
+  }
   if (period.aggregation === "weekly") {
     const week = series.weeks.find((item) => item.week === period.index);
     if (!week) {
@@ -259,6 +362,18 @@ function indicatorPeriodHero(
     }
     const days = series.days.filter((day) => day.day >= week.start_day && day.day <= week.end_day);
     const weekName = `${week.partial ? `Days ${week.start_day}–${week.end_day}` : `Week ${week.week}`} (${formatRange(week.start_date, week.end_date)})`;
+    const minDays = kind === "dry" ? series.thresholds.dry_spell_min_days : series.thresholds.wet_spell_min_days;
+    const chance = kind && spellStat === "chance" ? week.spell_chance?.[kind] : null;
+    if (kind && chance !== null && chance !== undefined) {
+      // The chance of a spell of the chosen length touching this week, as on the map.
+      return {
+        label: `Chance of a ${minDays}+ day ${name} · ${weekName}`,
+        value: String(Math.round(chance)),
+        unit: "%",
+        context: isEnsemble(series) ? `${Math.round((chance / 100) * (series.members ?? 1))} of ${series.members} members` : chance ? "This run has one" : "None in this run",
+        whole: series.spell_chance_total ? `Whole run: ${Math.round(series.spell_chance_total[kind])}%` : null,
+      };
+    }
     const spread = isEnsemble(series) ? dayCountSpread(week, kind) : null;
     if (spread) {
       const round = (value: number | null | undefined) => String(Math.round((value ?? 0) * 10) / 10);
@@ -538,7 +653,10 @@ function SpellCalendar({
   const first = series.days[0];
   const last = series.days[series.days.length - 1];
   const month = (iso: string) => formatDay(iso, "compact").split(" ")[1] ?? "";
-  const hasPast = Boolean(first && first.date < today);
+  // Observed days keep their real wet/dry colours (they happened); only elapsed days still awaiting
+  // observations are greyed out as past.
+  const hasObserved = series.days.some((day) => day.observed);
+  const hasPast = series.days.some((day) => day.date < today && !day.observed);
   const hasToday = series.days.some((day) => day.date === today);
   return (
     <div className="ss-calendar" data-testid="subseasonal-calendar">
@@ -559,10 +677,10 @@ function SpellCalendar({
         {series.days.map((day) => {
           const spell = focus && day.spell === focus ? day.spell : null;
           const state = spell ? `${spell}-spell` : day.wet ? "wet" : "dry";
-          const when = day.date < today ? " past" : day.date === today ? " today" : "";
+          const when = day.observed ? " observed" : day.date < today ? " past" : day.date === today ? " today" : "";
           const date = new Date(`${day.date}T00:00:00Z`).getUTCDate();
           const value = day.value ?? 0;
-          const label = `${formatDay(day.date, "weekday")}${day.date === today ? " (today)" : ""}: ${formatAmount(day.value, "mm")}${spell ? `, ${spell} spell` : ""}`;
+          const label = `${formatDay(day.date, "weekday")}${day.date === today ? " (today)" : ""}: ${formatAmount(day.value, "mm")}${day.observed ? " observed" : ""}${spell ? `, ${spell} spell` : ""}`;
           return (
             <button
               key={day.day}
@@ -588,7 +706,8 @@ function SpellCalendar({
         <span className="key cal-dry">Dry day</span>
         {focus === "dry" ? <span className="key cal-dry-spell">Dry spell</span> : null}
         {focus === "wet" ? <span className="key cal-wet-spell">Wet spell</span> : null}
-        {hasPast ? <span className="key past">Past</span> : null}
+        {hasObserved ? <span className="key cal-observed">Observed</span> : null}
+        {hasPast ? <span className="key past">{hasObserved ? "Awaiting obs." : "Past"}</span> : null}
         {hasToday ? <span className="key cal-today">Today</span> : null}
       </div>
     </div>
@@ -603,14 +722,6 @@ function runsTitle(series: SubseasonalSeries, kind: SpellKind) {
   return `Runs of ${kind} days (${minDays}+ days)`;
 }
 
-/** Both spell lists, for the layers that are not about one kind of spell (rain, rain days). */
-function spellRuns(series: SubseasonalSeries) {
-  return (["dry", "wet"] as const).map((kind) => (
-    <Section key={`runs-${kind}`} title={runsTitle(series, kind)}>
-      <SpellList series={series} kind={kind} />
-    </Section>
-  ));
-}
 
 /** Every spell of one kind with its status, dates, length and rain; open ends are spelled out. */
 function SpellList({ series, kind }: { series: SubseasonalSeries; kind: SpellKind }) {
@@ -623,14 +734,17 @@ function SpellList({ series, kind }: { series: SubseasonalSeries; kind: SpellKin
   const last = series.days[series.days.length - 1];
   const runsOn = spells.some((spell) => spell.open_end);
   const runsIn = spells.some((spell) => spell.open_start);
+  const observedDays = observedDayCount(series);
   return (
     <>
       <ul className="ss-spell-list" data-testid="subseasonal-spells">
         {spells.map((spell) => {
           const status = spellStatus(spell, today);
+          // A spell wholly inside the observed days happened: say so rather than just "Past".
+          const observed = status === "past" && spell.end_day <= observedDays;
           return (
-            <li key={`${spell.kind}-${spell.start_day}`} className={`ss-spell ${spell.kind} ${status}`}>
-              <span className={`ss-spell-status ${status}`}>{SPELL_STATUS_LABELS[status]}</span>
+            <li key={`${spell.kind}-${spell.start_day}`} className={`ss-spell ${spell.kind} ${status}${observed ? " observed" : ""}`}>
+              <span className={`ss-spell-status ${status}${observed ? " observed" : ""}`}>{observed ? "Observed" : SPELL_STATUS_LABELS[status]}</span>
               <span className="ss-spell-dates">
                 {spell.open_start ? "← " : ""}
                 {formatRange(spell.start_date, spell.end_date)}
@@ -648,8 +762,14 @@ function SpellList({ series, kind }: { series: SubseasonalSeries; kind: SpellKin
                   className={`ss-spell-chance ${spell.probability >= 66 ? "high" : spell.probability >= 33 ? "mid" : "low"}`}
                   title="Share of ensemble members with a spell over these days"
                 >
-                  Chance {Math.round(spell.probability)}%
-                  {series.members ? ` · ${Math.round((spell.probability / 100) * series.members)} of ${series.members} members` : ""}
+                  {observed ? (
+                    "Happened"
+                  ) : (
+                    <>
+                      Chance {Math.round(spell.probability)}%
+                      {series.members ? ` · ${Math.round((spell.probability / 100) * series.members)} of ${series.members} members` : ""}
+                    </>
+                  )}
                 </span>
               ) : null}
             </li>
@@ -690,6 +810,10 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
  * The selected layer's sections, most important first. The drawer shows the first one straight under
  * the headline (so a change of layer, period or statistic is visible without scrolling) and the
  * rest after the advice.
+ *
+ * One rule for every layer and period: the amount first, then one answer about it (its chance, or
+ * for a single run its weekly counts), so a period shows at most two charts. Week-by-week charts
+ * belong to the Weekly period and are not repeated under the whole run.
  */
 function layerSections({
   layer,
@@ -700,9 +824,12 @@ function layerSections({
   onSeekDay,
   onSelectWeek,
   view = null,
+  spellStat = "chance",
 }: {
   /** Ensemble rainfall: the statistic chosen for the map (mean, median or chance). */
   view?: StatView | null;
+  /** Spell layers, for a week: the chance of a spell of the chosen length, or the days in spells. */
+  spellStat?: SpellStat;
   layer: SubseasonalLayerKey;
   series: SubseasonalSeries;
   aggregation: SubseasonalAggregation;
@@ -712,28 +839,80 @@ function layerSections({
   onSelectWeek: (week: number) => void;
 }): { charts: ReactNode[]; details: ReactNode[] } {
   if (layer === "rainy_days" || layer === "dry_spell_days" || layer === "wet_spell_days") {
-    // One rule for the day-count layers: the day chart when daily, the week chart when weekly, both
-    // for the whole run; then the spell list (spells), and the day-by-day calendar folded last.
+    // The day charts when daily or for the whole run, the week chart when weekly (and for a single
+    // run's whole run); then the spell list (spells), and the day-by-day calendar folded last.
     const kind: SpellKind | null = layer === "dry_spell_days" ? "dry" : layer === "wet_spell_days" ? "wet" : null;
     const wetDay = series.thresholds.wet_day_mm;
+    const minDays = kind === "dry" ? series.thresholds.dry_spell_min_days : series.thresholds.wet_spell_min_days;
+    // Spells, two answers on one chart: bars for the chance a spell *begins* that day ("dry spells
+    // ahead"), a line for the chance the day lies *inside* one (what the map shows). Older backends
+    // without start chances keep the single "inside a spell" chart.
+    const withStarts = Boolean(kind && series.days.some((day) => day.spell_start_prob));
+    const spellChart = kind ? (
+      withStarts ? (
+        <DailyChanceChart
+          series={series}
+          values={series.days.map((day) => day.spell_start_prob?.[kind])}
+          line={series.days.map((day) => day.spell_prob?.[kind])}
+          currentDay={currentDay}
+          onSelectDay={onSeekDay}
+          title={`${kind === "dry" ? "Dry" : "Wet"} spells of ${minDays}+ days: chance (%)`}
+          legend="Starts that day"
+          lineLabel={`In a ${kind} spell`}
+          judgeableUntil={series.days.length - minDays + 1}
+          observedWords={{ yes: `In a ${kind} spell`, no: `No ${kind} spell` }}
+          tone={kind}
+          note={`A ${kind} spell is ${minDays}+ days in a row ${kind === "dry" ? `under ${wetDay} mm` : `of ${wetDay} mm or more`}. Bars: the chance one begins that day; line: the chance the day is inside one, as on the map.`}
+        />
+      ) : (
+        <DailyChanceChart
+          series={series}
+          values={series.days.map((day) => day.spell_prob?.[kind])}
+          currentDay={currentDay}
+          onSelectDay={onSeekDay}
+          title={`Chance of being in a ${minDays}+ day ${kind} spell (%)`}
+          legend={sentenceCase(chanceBasis(series))}
+          observedWords={{ yes: `In a ${kind} spell`, no: `No ${kind} spell` }}
+          tone={kind}
+        />
+      )
+    ) : (
+      <DailyChanceChart
+        series={series}
+        values={series.days.map((day) => day.wet_prob)}
+        currentDay={currentDay}
+        onSelectDay={onSeekDay}
+        title="Chance of a rain day (%)"
+        legend={sentenceCase(chanceBasis(series))}
+        observedWords={{ yes: "Rain day", no: "Dry day" }}
+        tone="rainy"
+      />
+    );
     const daySection = (
       <Section>
         <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} bands={kind ?? "none"} />
-        {isEnsemble(series) ? (
-          <DailyChanceChart
-            series={series}
-            values={series.days.map((day) => (kind ? day.spell_prob?.[kind] : day.wet_prob))}
-            currentDay={currentDay}
-            onSelectDay={onSeekDay}
-            title={kind ? `Chance of a ${kind} spell (%)` : "Chance of a rain day (%)"}
-            legend={sentenceCase(chanceBasis(series))}
-            tone={kind ?? "rainy"}
-          />
-        ) : null}
+        {isEnsemble(series) ? spellChart : null}
       </Section>
     );
     const spreads = isEnsemble(series) && series.weeks.some((week) => dayCountSpread(week, kind)) ? series.weeks.map((week) => dayCountSpread(week, kind)) : null;
-    const weekSection = (
+    // Spells, for a week, in Chance: the chance of a spell of the chosen length touching each week.
+    const weekChance = Boolean(kind && spellStat === "chance" && series.weeks.some((week) => week.spell_chance));
+    const weekSection = weekChance && kind ? (
+      <Section>
+        <WeeklyChart
+          series={series}
+          values={series.weeks.map((week) => week.spell_chance?.[kind] ?? null)}
+          currentWeek={currentWeek}
+          onSelectWeek={aggregation === "weekly" ? onSelectWeek : undefined}
+          title={`Chance of a ${minDays}+ day ${kind} spell each week (%)`}
+          yLabel="Chance (%)"
+          legend={sentenceCase(chanceBasis(series))}
+          unit="%"
+          tone={kind}
+          maxValue={100}
+        />
+      </Section>
+    ) : (
       <Section>
         <WeeklyChart
           series={series}
@@ -747,7 +926,7 @@ function layerSections({
           centreLabel="Mean"
           currentWeek={currentWeek}
           onSelectWeek={aggregation === "weekly" ? onSelectWeek : undefined}
-          title={kind === "dry" ? "Days in dry spells per week" : kind === "wet" ? "Days in wet spells per week" : "Rain days per week"}
+          title={kind ? `Days in ${minDays}+ day ${kind} spells per week` : "Rain days per week"}
           yLabel="Days"
           legend={kind === "dry" ? "Dry-spell days" : kind === "wet" ? "Wet-spell days" : `Days ≥${wetDay} mm`}
           unit="days"
@@ -765,7 +944,12 @@ function layerSections({
     return {
       charts: [
         aggregation === "weekly" ? null : <Fragment key="day">{daySection}</Fragment>,
-        aggregation === "daily" ? null : <Fragment key="week">{weekSection}</Fragment>,
+        // Whole run: an ensemble's day section already pairs the rain with its chance chart; the
+        // per-week counts belong to the Weekly period. A single run has no chance chart, so its
+        // week counts stand in as the second chart.
+        aggregation === "daily" || (aggregation === "total" && isEnsemble(series)) ? null : (
+          <Fragment key="week">{weekSection}</Fragment>
+        ),
       ].filter(Boolean),
       details: [
         kind ? (
@@ -774,10 +958,8 @@ function layerSections({
             {calendar}
           </Section>
         ) : (
-          <Fragment key="runs">
-            {spellRuns(series)}
-            {calendar}
-          </Fragment>
+          // Rain days: the calendar only; the runs of dry and wet days are the spell layers' own.
+          <Section key="calendar">{calendar}</Section>
         ),
       ],
     };
@@ -823,23 +1005,21 @@ function layerSections({
           <RainChart series={series} currentDay={currentDay} onSelectDay={onSeekDay} bands="none" extremeMm={threshold} />
         </Section>,
         <Section key="extreme-total">
+          {/* Like the spell charts: bars for each day's chance, a line for at least one by that date. */}
           <DailyChanceChart
             series={series}
-            values={extremeChanceByDate(series, threshold)}
-            cumulative
+            values={series.days.map((day) => day.extreme_prob)}
+            line={extremeChanceByDate(series, threshold)}
             currentDay={currentDay}
             onSelectDay={onSeekDay}
-            title={`Chance of a ${threshold} mm+ day so far (%)`}
-            legend={share}
+            title={`Chance of a ${threshold} mm+ day (%)`}
+            legend="That day"
+            lineLabel="At least one by this date"
+            observedWords={{ yes: `${threshold} mm+ fell`, no: `No ${threshold} mm+ day` }}
             tone="extreme"
           />
         </Section>,
-        <Section key="wettest-week">
-          <WeeklyWettestDayChart series={series} currentWeek={currentWeek} thresholdMm={threshold} />
-        </Section>,
-        <Section key="extreme-week">
-          {weekChart}
-        </Section>,
+        // The week-by-week charts are the Weekly period's; the whole run keeps its two answers.
         ],
         details: [],
       };
@@ -857,6 +1037,7 @@ function layerSections({
           onSelectDay={onSeekDay}
           title={`Chance of ${threshold} mm+ in a day (%)`}
           legend={share}
+          observedWords={{ yes: `${threshold} mm+ fell`, no: `No ${threshold} mm+ day` }}
           tone="extreme"
         />
       </Section>,
@@ -879,9 +1060,9 @@ function layerSections({
       details: [],
     };
   }
-  // Rainfall follows the map's period (days when daily, weeks when weekly, both for the whole run)
+  // Rainfall follows the map's period (days when daily, weeks when weekly, days plus one more for the whole run)
   // and, for an ensemble, the map's statistic: the charts centre on the mean or median, and the
-  // chance view leads with the probability of reaching the chosen amount.
+  // chance view adds the probability of reaching the chosen amount under the amounts it counts.
   const centre = view?.stat === "median" ? "median" : "mean";
   const amount = view?.stat === "chance" ? (view.threshold ?? 0) : null;
   const chanceSection =
@@ -925,8 +1106,8 @@ function layerSections({
   const rainTitle = (base: string, line: number | undefined) =>
     `${base}${!isEnsemble(series) ? "" : line !== undefined ? ` vs ${line} mm` : `, ${centre}`} (mm)`;
   return {
+    // The amount first, then its chance: the same order as every other panel (Extreme rain, spells).
     charts: [
-    chanceSection,
     aggregation === "weekly" ? null : (
       <Section key="rain-day">
         <RainChart
@@ -942,7 +1123,10 @@ function layerSections({
         />
       </Section>
     ),
-    aggregation === "daily" ? null : (
+    aggregation === "weekly" ? null : chanceSection,
+    // Whole run: at most two charts, the amount and one more. With a chance shown that is the
+    // chance; otherwise the weekly totals, which add up to the run's total.
+    aggregation === "daily" || (aggregation === "total" && chanceSection) ? null : (
       <Section key="rain-week">
         <WeeklyRainChart
           title={rainTitle("Weekly rain", weekLine)}
@@ -956,8 +1140,9 @@ function layerSections({
         />
       </Section>
     ),
+    aggregation === "weekly" ? chanceSection : null,
     ].filter(Boolean),
-    details: [<Fragment key="runs">{spellRuns(series)}</Fragment>],
+    details: [],
   };
 }
 
@@ -1036,9 +1221,10 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
   const period = { aggregation: state.aggregation, index: state.index };
   const view: StatView | null = state.stat ? { stat: state.stat, threshold: state.threshold } : null;
   const periodHero = series
-    ? layer === "rainfall"
-      ? (statHero(series, period, view) ?? rainPeriodHero(series, period))
-      : indicatorPeriodHero(layer, series, period)
+    ? (observedDayHero(layer, series, period) ??
+      (layer === "rainfall"
+        ? (statHero(series, period, view) ?? rainPeriodHero(series, period))
+        : indicatorPeriodHero(layer, series, period, state.spellStat)))
     : null;
   const hero = series ? periodHero ?? heroFor(layer, series, todayIso(), currentDay) : null;
   const sections = series
@@ -1051,6 +1237,7 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
         onSeekDay,
         onSelectWeek: state.setIndex,
         view,
+        spellStat: state.spellStat,
       })
     : { charts: [], details: [] };
 
@@ -1161,6 +1348,7 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
             </section>
 
             {layer === "rainfall" ? <StatControls state={state} variant="compact" /> : null}
+            {state.spellKind ? <SpellControls state={state} variant="compact" /> : null}
             {sections.charts}
 
             <AdvisoryPanel

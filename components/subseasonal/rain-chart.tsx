@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { formatAmount, formatDay, formatRange, pastDayCount, todayIso, weeklyWettestDay } from "@/lib/subseasonal";
+import { formatAmount, formatDay, formatRange, observedDayCount, pastDayCount, todayIso, weeklyWettestDay, weekUnits } from "@/lib/subseasonal";
 import type { SpellKind, SubseasonalOnset, SubseasonalSeries, SubseasonalSpread } from "@/lib/subseasonal";
 
 function useWidth<T extends HTMLElement>() {
@@ -39,6 +39,8 @@ type Scale = {
   baseline: number;
   plotWidth: number;
   plotHeight: number;
+  /** Fill for a hatched area (days with no answer yet), unique to this chart. */
+  hatch: string;
 };
 
 /** An x-axis tick; the short label is used when ticks are packed too tightly for the full one. */
@@ -58,13 +60,15 @@ const MARKER_LINE = PAD.top - 22;
 
 /**
  * The shared frame of every 46-day chart, drawn to one standard (WMO style): a zero-based y-axis
- * with ticks, gridlines and unit, axis lines, an x-axis with ticks and title, and the forecast days
- * already gone shaded as "Elapsed" up to a dashed "Today" line. Charts draw their marks inside it.
+ * with ticks, gridlines and unit, axis lines, an x-axis with ticks and title, and the days already
+ * gone shaded up to a dashed "Today" line: "Observed" where observations have replaced the forecast,
+ * "Elapsed" where they have not arrived yet. Charts draw their marks inside it.
  */
 function ChartFrame({
   units,
   maxValue,
   pastUnits,
+  observedUnits = 0,
   xTicks,
   xLabel,
   xLabelTight,
@@ -80,6 +84,8 @@ function ChartFrame({
   maxValue: number;
   /** Slots already in the past (fractions allowed); 0 for none. */
   pastUnits: number;
+  /** Of those, the leading slots holding observed rain instead of forecast. */
+  observedUnits?: number;
   xTicks: XTick[];
   xLabel: string;
   /** The x-axis title when ticks are crowded and their second line (dates) is dropped. */
@@ -93,6 +99,7 @@ function ChartFrame({
   ariaLabel: string;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
+  const hatchId = `ss-hatch-${useId().replace(/:/g, "")}`;
   const { max, ticks } = yTicks?.length ? { max: yTicks[yTicks.length - 1], ticks: yTicks } : axisFor(maxValue);
   // Narrow charts (phones) give the y-axis less room so the bars get more.
   const left = width < 420 ? 42 : PAD.left;
@@ -114,19 +121,45 @@ function ChartFrame({
     baseline,
     plotWidth,
     plotHeight,
+    hatch: `url(#${hatchId})`,
   };
   const pastX = pastUnits > 0 ? scale.x(Math.min(pastUnits, units)) : null;
   const hasToday = pastX !== null && pastUnits < units;
+  const observedX = observedUnits > 0 ? scale.x(Math.min(observedUnits, pastUnits || observedUnits, units)) : null;
+  // Room for a band's label left of the "Today" label, or none when the band is too narrow.
+  const labelRoom = (bandWidth: number, words: number) => bandWidth > (hasToday ? 44 + words : words);
 
   return (
     <div ref={ref} className="ss-frame">
       {width > 0 ? (
         <svg width={width} height={height} role="img" aria-label={ariaLabel} onMouseLeave={onMouseLeave}>
-          {pastX !== null ? (
-            <g className="ss-frame-past" aria-hidden="true">
-              <rect x={left} y={PAD.top} width={pastX - left} height={plotHeight} />
-              {/* Room for "Elapsed" left of the "Today" label, or none when the band is too narrow. */}
-              {pastX - left > (pastUnits < units ? 100 : 56) ? (
+          <defs>
+            <pattern id={hatchId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect className="ss-hatch-ground" width="6" height="6" />
+              <line className="ss-hatch-line" x1="0" y1="0" x2="0" y2="6" />
+            </pattern>
+          </defs>
+          {observedX !== null ? (
+            <g className="ss-frame-observed" aria-hidden="true">
+              <rect x={left} y={PAD.top} width={observedX - left} height={plotHeight} />
+              {labelRoom(observedX - left, 62) ? (
+                <text className="ss-frame-observed-label" x={left + 4} y={MARKER_LINE}>
+                  Observed
+                </text>
+              ) : null}
+            </g>
+          ) : null}
+          {pastX !== null && (observedX === null || pastX > observedX + 0.5) ? (
+            <g className={`ss-frame-past${observedX !== null ? " awaiting" : ""}`} aria-hidden="true">
+              {/* Elapsed days still awaiting observations are hatched: forecast, but no longer ahead. */}
+              <rect
+                x={observedX ?? left}
+                y={PAD.top}
+                width={pastX - (observedX ?? left)}
+                height={plotHeight}
+                style={observedX !== null ? { fill: scale.hatch } : undefined}
+              />
+              {observedX === null && labelRoom(pastX - left, 56) ? (
                 <text className="ss-frame-past-label" x={left + 4} y={MARKER_LINE}>
                   Elapsed
                 </text>
@@ -247,8 +280,11 @@ function SpreadBox({
 
 /** Colour ramps for chance bars, matching the map legends (edges in %). */
 const CHANCE_RAMPS: Record<string, { edges: number[]; colors: string[] }> = {
-  rainy: { edges: [10, 20, 40, 60, 80], colors: ["#cfeefa", "#9bd9f2", "#5cbbe6", "#2f96d4", "#3e4ca8"] },
+  // Rain days: the map's rainy-day ramp; rain amounts: its rain-chance ramp.
+  rainy: { edges: [10, 20, 40, 60, 80], colors: ["#cfeefa", "#9bd9f2", "#5cbbe6", "#2f96d4", "#2a6fc0"] },
   rain: { edges: [10, 20, 40, 60, 80], colors: ["#cfeefa", "#9bd9f2", "#5cbbe6", "#2f96d4", "#3e4ca8"] },
+  dry: { edges: [10, 20, 40, 60, 80], colors: ["#fbe7a6", "#f8cf6a", "#f0a945", "#de7d2c", "#c0531f"] },
+  wet: { edges: [10, 20, 40, 60, 80], colors: ["#d4f0e3", "#a3dfc8", "#6cc7ac", "#3aa894", "#1f8580"] },
   extreme: { edges: [5, 10, 20, 40, 60], colors: ["#fde68a", "#fbbf24", "#f97316", "#dc2626", "#7e22ce"] },
 };
 
@@ -339,6 +375,8 @@ export function RainChart({
   const ensemble = days.some((day) => day.spread);
   const centreOf = (day: SubseasonalSeries["days"][number]) => (centre === "median" ? (day.spread?.p50 ?? null) : day.value);
   const pastDays = pastDayCount(series, todayIso());
+  // Elapsed days with observed rain: one certain amount each, drawn as a bar rather than a spread.
+  const observedDays = observedDayCount(series);
   const threshold = series.thresholds.wet_day_mm;
   const focus = days[(hoverDay ?? currentDay ?? 0) - 1] ?? null;
   const spells =
@@ -352,9 +390,14 @@ export function RainChart({
         : bands === "wet"
           ? "Daily rain and wet spells (mm)"
           : "Daily rain (mm)");
+  const observedPeak = Math.max(0, ...days.slice(0, observedDays).map((day) => day.value ?? 0));
   const maxValue = ensemble
-    ? spreadAxisMax(days.map((day) => day.spread), Math.max(threshold * 2, extremeMm ? extremeMm * 1.1 : 0))
+    ? Math.max(
+        spreadAxisMax(days.slice(observedDays).map((day) => day.spread), Math.max(threshold * 2, extremeMm ? extremeMm * 1.1 : 0)),
+        observedPeak * 1.1,
+      )
     : Math.max(threshold * 2, extremeMm ? extremeMm * 1.1 : 0, ...days.map((day) => day.value ?? 0));
+  const focusObserved = Boolean(focus?.observed);
 
   return (
     <figure className="ss-chart" data-testid="subseasonal-chart">
@@ -365,13 +408,21 @@ export function RainChart({
       <div className="ss-chart-readout" aria-live="polite">
         {focus ? (
           <>
-            <strong>{formatAmount(ensemble ? centreOf(focus) : focus.value, "mm")}</strong>
+            <strong>{formatAmount(ensemble && !focusObserved ? centreOf(focus) : focus.value, "mm")}</strong>
             <span>
               {formatDay(focus.date, "weekday")}
-              {ensemble ? ` · ${centre}` : ""}
+              {focusObserved ? " · observed" : ensemble ? ` · ${centre}` : ""}
               {focus.spell ? ` · ${focus.spell} spell` : ""}
             </span>
-            {focus.spread ? <span className="ss-chart-spread-text">{spreadText(focus.spread)}</span> : null}
+            {focusObserved ? (
+              focus.forecast_value !== null && focus.forecast_value !== undefined ? (
+                <span className="ss-chart-spread-text">
+                  Forecast{ensemble ? " mean" : ""} was {formatAmount(focus.forecast_value, "mm")}
+                </span>
+              ) : null
+            ) : focus.spread ? (
+              <span className="ss-chart-spread-text">{spreadText(focus.spread)}</span>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -379,6 +430,7 @@ export function RainChart({
         units={days.length}
         maxValue={maxValue}
         pastUnits={pastDays}
+        observedUnits={observedDays}
         xTicks={series.weeks.map((week) => ({
           at: week.start_day - 1,
           label: formatDay(week.start_date, "compact"),
@@ -422,7 +474,18 @@ export function RainChart({
               {ensemble ? (
                 <>
                   {days.map((day, index) =>
-                    day.spread ? (
+                    day.day <= observedDays ? (
+                      <ObservedBar
+                        key={day.day}
+                        value={day.value}
+                        wet={(day.value ?? 0) >= threshold}
+                        x={x(index) + (slot - barWidth) / 2}
+                        width={barWidth}
+                        y={y}
+                        baseline={baseline}
+                        className={`${day.day === currentDay ? " current" : ""}${hoverDay === day.day ? " hover" : ""}`}
+                      />
+                    ) : day.spread ? (
                       <SpreadBox
                         key={day.day}
                         spread={day.spread}
@@ -434,9 +497,13 @@ export function RainChart({
                       />
                     ) : null,
                   )}
+                  {/* The members' mean (or median) through the forecast days only: observed days have no spread to summarise. */}
                   <polyline
                     className="ss-spread-mean"
-                    points={days.map((day, index) => `${x(index) + slot / 2},${y(centreOf(day) ?? 0)}`).join(" ")}
+                    points={days
+                      .slice(observedDays)
+                      .map((day, index) => `${x(index + observedDays) + slot / 2},${y(centreOf(day) ?? 0)}`)
+                      .join(" ")}
                   />
                   {days.map((day, index) => (
                     <rect
@@ -449,7 +516,7 @@ export function RainChart({
                       onMouseEnter={() => setHoverDay(day.day)}
                       onClick={() => onSelectDay(day.day)}
                     >
-                      <title>{`${formatDay(day.date, "weekday")} · ${formatAmount(centreOf(day), "mm")}`}</title>
+                      <title>{dayTitle(day, day.observed ? day.value : centreOf(day))}</title>
                     </rect>
                   ))}
                 </>
@@ -459,13 +526,25 @@ export function RainChart({
                 const isPast = day.day <= pastDays;
                 return (
                   <g key={day.day}>
-                    <rect
-                      className={`ss-chart-bar${day.wet ? " wet" : ""}${isPast ? " past" : ""}${day.day === currentDay ? " current" : ""}${hoverDay === day.day ? " hover" : ""}`}
-                      x={x(index) + (slot - barWidth) / 2}
-                      y={y(value)}
-                      width={barWidth}
-                      height={Math.max(baseline - y(value), value > 0 ? 1 : 0)}
-                    />
+                    {day.day <= observedDays ? (
+                      <ObservedBar
+                        value={day.value}
+                        wet={Boolean(day.wet)}
+                        x={x(index) + (slot - barWidth) / 2}
+                        width={barWidth}
+                        y={y}
+                        baseline={baseline}
+                        className={`${day.day === currentDay ? " current" : ""}${hoverDay === day.day ? " hover" : ""}`}
+                      />
+                    ) : (
+                      <rect
+                        className={`ss-chart-bar${day.wet ? " wet" : ""}${isPast ? " past" : ""}${day.day === currentDay ? " current" : ""}${hoverDay === day.day ? " hover" : ""}`}
+                        x={x(index) + (slot - barWidth) / 2}
+                        y={y(value)}
+                        width={barWidth}
+                        height={Math.max(baseline - y(value), value > 0 ? 1 : 0)}
+                      />
+                    )}
                     <rect
                       className="ss-chart-hit"
                       x={x(index)}
@@ -475,7 +554,7 @@ export function RainChart({
                       onMouseEnter={() => setHoverDay(day.day)}
                       onClick={() => onSelectDay(day.day)}
                     >
-                      <title>{`${formatDay(day.date, "weekday")} · ${formatAmount(day.value, "mm")}`}</title>
+                      <title>{dayTitle(day, day.value)}</title>
                     </rect>
                   </g>
                 );
@@ -504,10 +583,59 @@ export function RainChart({
                 ...(bands === "both" || bands === "dry" ? [{ key: "band-dry", label: "Dry spell" }] : []),
                 ...(bands === "both" || bands === "wet" ? [{ key: "band-wet", label: "Wet spell" }] : []),
               ]),
-          ...(pastDays > 0 ? [{ key: "past", label: "Elapsed" }] : []),
+          ...pastLegend(pastDays, observedDays),
         ]}
       />
     </figure>
+  );
+}
+
+/** Legend keys for the shaded past: observed rain, and elapsed days still awaiting observations. */
+function pastLegend(pastDays: number, observedDays: number) {
+  return [
+    ...(observedDays > 0 ? [{ key: "observed", label: "Observed" }] : []),
+    ...(pastDays > observedDays ? [observedDays > 0 ? { key: "awaiting", label: "Awaiting obs." } : { key: "past", label: "Elapsed" }] : []),
+  ];
+}
+
+/** A day's tooltip: its amount, and for an observed day what had been forecast. */
+function dayTitle(day: SubseasonalSeries["days"][number], amount: number | null | undefined) {
+  const base = `${formatDay(day.date, "weekday")} · ${formatAmount(amount, "mm")}`;
+  if (!day.observed) return base;
+  const forecast = day.forecast_value !== null && day.forecast_value !== undefined ? `; forecast ${formatAmount(day.forecast_value, "mm")}` : "";
+  return `${base} observed${forecast}`;
+}
+
+/**
+ * One elapsed day's observed rain: a solid bar in the "observed" ink, so what has happened reads
+ * apart from the forecast's boxes at a glance. Dry days get a pale stub rather than nothing.
+ */
+function ObservedBar({
+  value,
+  wet,
+  x,
+  width,
+  y,
+  baseline,
+  className = "",
+}: {
+  value: number | null | undefined;
+  wet: boolean;
+  x: number;
+  width: number;
+  y: (value: number) => number;
+  baseline: number;
+  className?: string;
+}) {
+  const amount = value ?? 0;
+  return (
+    <rect
+      className={`ss-observed-bar${wet ? " wet" : ""}${className}`}
+      x={x}
+      y={y(amount)}
+      width={width}
+      height={Math.max(baseline - y(amount), 1.5)}
+    />
   );
 }
 
@@ -563,15 +691,14 @@ export function WeeklyChart({
 }) {
   const weeks = series.weeks;
   const pastDays = pastDayCount(series, todayIso());
+  const observedDays = observedDayCount(series);
   const partial = weeks.find((week) => week.partial);
   // The past boundary in week slots: whole weeks gone plus the gone share of the current one.
-  const pastWeekIndex = weeks.findIndex((week) => week.end_day > pastDays);
-  const pastUnits =
-    pastDays <= 0
-      ? 0
-      : pastWeekIndex === -1
-        ? weeks.length
-        : pastWeekIndex + (pastDays - weeks[pastWeekIndex].start_day + 1) / weeks[pastWeekIndex].days;
+  const pastUnits = weekUnits(weeks, pastDays);
+  const observedUnits = weekUnits(weeks, observedDays);
+  // A week wholly observed has one certain value; one partly observed mixes observed and forecast days.
+  const fullyObserved = (week: SubseasonalSeries["weeks"][number]) => observedDays >= week.end_day;
+  const mixed = weeks.find((week) => !fullyObserved(week) && observedDays >= week.start_day);
   const describe = (value: number | null) =>
     unit === "mm" ? formatAmount(value, "mm") : unit === "%" ? `${Math.round(value ?? 0)}%` : `${dayCount(value ?? 0)} days`;
   const hasSpread = Boolean(spreads?.some(Boolean));
@@ -590,6 +717,7 @@ export function WeeklyChart({
             Math.max(lineMm ? lineMm * 1.1 : 0, hasSpread ? spreadAxisMax(spreads ?? [], 1) : Math.max(1, ...values.map((value) => value ?? 0)) * 1.1)
           }
           pastUnits={pastUnits}
+          observedUnits={observedUnits}
           xTicks={weeks.map((week, index) => ({
             at: index + 0.5,
             label: `Wk ${week.week}${week.partial ? "*" : ""}`,
@@ -610,14 +738,32 @@ export function WeeklyChart({
               const value = raw ?? 0;
               const centre = x(index) + slot / 2;
               const isPast = week.end_day <= pastDays;
+              const observed = fullyObserved(week);
               return (
                 <g
                   key={week.week}
-                  className={`ss-week${week.week === currentWeek ? " current" : ""}${isPast ? " past" : ""}${onSelectWeek ? " selectable" : ""}`}
+                  className={`ss-week${week.week === currentWeek ? " current" : ""}${isPast ? " past" : ""}${observed ? " observed" : ""}${onSelectWeek ? " selectable" : ""}`}
                   onClick={() => onSelectWeek?.(week.week)}
                 >
-                  <title>{`${weekTitle(week)} · ${describe(raw)}${hasSpread && spreads?.[index] && unit !== "%" ? ` · ${spreadText(spreads[index], unit)}` : ""}`}</title>
-                  {hasSpread && spreads?.[index] ? (
+                  <title>
+                    {observed
+                      ? `${weekTitle(week)} · ${describe(raw)} observed`
+                      : `${weekTitle(week)} · ${describe(raw)}${hasSpread && spreads?.[index] && unit !== "%" ? ` · ${spreadText(spreads[index], unit)}` : ""}`}
+                  </title>
+                  {observed ? (
+                    <>
+                      <rect
+                        className="ss-observed-bar wet"
+                        x={centre - barWidth / 2}
+                        y={y(value)}
+                        width={barWidth}
+                        height={Math.max(baseline - y(value), 1.5)}
+                      />
+                      <text className="ss-week-value" x={centre} y={y(value) - 5} textAnchor="middle">
+                        {raw === null || (unit === "%" && Math.round(value) === 0) ? "" : `${Math.round(value)}${unit === "%" ? "%" : ""}`}
+                      </text>
+                    </>
+                  ) : hasSpread && spreads?.[index] ? (
                     <>
                       <SpreadBox spread={spreads[index]!} centre={centre} width={barWidth} y={y} axisMax={max} />
                       <circle className="ss-spread-mean-dot" cx={centre} cy={y(value)} r={3.5} />
@@ -671,12 +817,16 @@ export function WeeklyChart({
             : [{ key: unit === "%" ? "chance" : "week", label: legend }]),
           ...(lineMm ? [{ key: lineTone === "amount" ? "extreme-line amount-line" : "extreme-line", label: lineLabel ?? `${lineMm} mm` }] : []),
           ...(currentWeek && !hasSpread ? [{ key: "week-current", label: "On map" }] : []),
-          ...(pastDays > 0 ? [{ key: "past", label: "Elapsed" }] : []),
+          ...pastLegend(pastDays, observedDays),
         ]}
       />
-      {partial ? (
+      {partial || mixed ? (
         <p className="ss-frame-note">
-          * {partial.days} days ({formatRange(partial.start_date, partial.end_date)})
+          {partial ? `* ${partial.days} days (${formatRange(partial.start_date, partial.end_date)})` : null}
+          {partial && mixed ? " · " : null}
+          {mixed
+            ? `Wk ${mixed.week} counts ${observedDays - mixed.start_day + 1} observed day${observedDays - mixed.start_day + 1 === 1 ? "" : "s"} with the forecast`
+            : null}
         </p>
       ) : null}
     </figure>
@@ -756,8 +906,11 @@ export function WeeklyRainChart({
 }
 
 /**
- * A chance (0-100%) per day: of an extreme-rain day, or of being inside a spell. For a single run
- * the bars are simply 0 or 100 (forecast or not). Clicking a bar seeks the map to that day.
+ * A chance (0-100%) per day: of an extreme-rain day, a rain day, or a spell. For a single run the
+ * bars are simply 0 or 100 (forecast or not). Observed (elapsed) days are certain, 0 or 100, and
+ * drawn in the observed ink so they read as fact, not probability. With `line`, a second chance is
+ * drawn over the bars as a line: the spell charts show the chance a spell *starts* each day as bars
+ * and the chance of being *in* one as the line. Clicking a day seeks the map to it.
  */
 export function DailyChanceChart({
   series,
@@ -768,11 +921,13 @@ export function DailyChanceChart({
   legend,
   tone,
   cumulative = false,
+  line,
+  lineLabel,
+  judgeableUntil,
+  observedWords,
+  note,
 }: {
-  /**
-   * The values only ever rise (a chance "by this date"): drawn as a filled step line, so the chart
-   * shows when the chance builds up and where it levels off, instead of a wall of equal bars.
-   */
+  /** The values are a chance "by this date" (they only rise): same bars, worded "by" in the readout. */
   cumulative?: boolean;
   series: SubseasonalSeries;
   /** One % per entry of `series.days`. */
@@ -780,32 +935,69 @@ export function DailyChanceChart({
   currentDay: number | null;
   onSelectDay: (day: number) => void;
   title: string;
+  /** Legend words for the bars. */
   legend: string;
   tone: "extreme" | "dry" | "wet" | "rainy";
+  /** A second chance per day, drawn as a line over the bars (0-100 on the same axis). */
+  line?: (number | null | undefined)[];
+  lineLabel?: string;
+  /** Bars after this day cannot be judged inside the run (a spell starting there would run past its end): hatched. */
+  judgeableUntil?: number;
+  /** Readout words for an observed day: what happened ("In a dry spell") and what did not. */
+  observedWords?: { yes: string; no: string };
+  /** A line under the chart explaining what it shows. */
+  note?: string;
 }) {
   const [hoverDay, setHoverDay] = useState<number | null>(null);
   const memberCount = series.members ?? 1;
   const days = series.days;
   const pastDays = pastDayCount(series, todayIso());
+  const observedDays = observedDayCount(series);
   const focusDay = hoverDay ?? currentDay;
   const focus = focusDay ? days[focusDay - 1] : null;
   const focusValue = focusDay ? values[focusDay - 1] : null;
+  const focusLine = focusDay && line ? line[focusDay - 1] : null;
+  const focusObserved = Boolean(focus && focus.day <= observedDays);
+  // An observed day is a plain yes or no, unless the spell it belongs to depends on days still ahead.
+  const focusCertainValue = line ? focusLine : focusValue;
+  const focusCertain = focusObserved && (Math.round(focusCertainValue ?? 0) === 0 || Math.round(focusCertainValue ?? 0) === 100);
+  const unjudged = (day: number) => judgeableUntil !== undefined && day > judgeableUntil;
+  const members = (value: number | null | undefined) =>
+    memberCount > 1 && series.kind === "point" ? ` · ${Math.round(((value ?? 0) / 100) * memberCount)}/${memberCount} members` : "";
   return (
-    <figure className={`ss-chart tone-${tone}`} data-testid="subseasonal-chance-chart">
+    <figure className={`ss-chart tone-${tone}${line ? " with-line" : ""}`} data-testid="subseasonal-chance-chart">
       <figcaption className="ss-frame-title">
         <strong>{title}</strong>
         <span className="ss-frame-period">{periodTitle(series)}</span>
       </figcaption>
       <div className="ss-chart-readout" aria-live="polite">
         {focus ? (
-          <>
-            <strong>{Math.round(focusValue ?? 0)}%</strong>
-            <span>
-              {cumulative ? "by " : ""}
-              {formatDay(focus.date, "weekday")}
-              {memberCount > 1 && series.kind === "point" ? ` · ${Math.round(((focusValue ?? 0) / 100) * memberCount)}/${memberCount} members` : ""}
-            </span>
-          </>
+          focusCertain && observedWords ? (
+            <>
+              <strong>{focusCertainValue ? observedWords.yes : observedWords.no}</strong>
+              <span>{formatDay(focus.date, "weekday")} · observed</span>
+            </>
+          ) : line ? (
+            <>
+              <strong>{Math.round(focusLine ?? 0)}%</strong>
+              <span>
+                {lineLabel ?? "line"} · {formatDay(focus.date, "weekday")}
+              </span>
+              <span className="ss-chart-spread-text">
+                {unjudged(focus.day) ? "Too close to the end of the run to tell if one starts" : `${Math.round(focusValue ?? 0)}% ${legend.toLowerCase()}`}
+                {members(focusValue)}
+              </span>
+            </>
+          ) : (
+            <>
+              <strong>{Math.round(focusValue ?? 0)}%</strong>
+              <span>
+                {cumulative ? "by " : ""}
+                {formatDay(focus.date, "weekday")}
+                {focusObserved ? " · observed" : members(focusValue)}
+              </span>
+            </>
+          )
         ) : null}
       </div>
       <ChartFrame
@@ -813,6 +1005,7 @@ export function DailyChanceChart({
         maxValue={100}
         yTicks={[0, 20, 40, 60, 80, 100]}
         pastUnits={pastDays}
+        observedUnits={observedDays}
         xTicks={series.weeks.map((week) => ({
           at: week.start_day - 1,
           label: formatDay(week.start_date, "compact"),
@@ -820,84 +1013,99 @@ export function DailyChanceChart({
         }))}
         xLabel="Date"
         yLabel="Chance (%)"
-        height={204}
+        height={line ? 224 : 204}
         onMouseLeave={() => setHoverDay(null)}
         ariaLabel={`${title} for ${days.length} days`}
       >
-        {({ x, y, slot, top, baseline, plotHeight, plotWidth }) => {
-          const barWidth = Math.max(2, slot * 0.72);
+        {({ x, y, slot, top, baseline, plotHeight, plotWidth, hatch }) => {
+          const barWidth = Math.max(2, slot * (line ? 0.6 : 0.72));
+          const hits = days.map((day, index) => (
+            <rect
+              key={`hit-${day.day}`}
+              className="ss-chart-hit"
+              x={x(index)}
+              y={top}
+              width={slot}
+              height={plotHeight}
+              onMouseEnter={() => setHoverDay(day.day)}
+              onClick={() => onSelectDay(day.day)}
+            >
+              <title>{chanceTitle(day, values[index], line?.[index], legend, lineLabel, cumulative, day.day <= observedDays, unjudged(day.day))}</title>
+            </rect>
+          ));
+          const firstUnjudged = judgeableUntil !== undefined && judgeableUntil < days.length ? judgeableUntil : null;
           const bars = days.map((day, index) => {
             const value = values[index] ?? 0;
+            const observed = day.day <= observedDays;
+            if (unjudged(day.day)) {
+              return null;
+            }
             return (
-              <g key={day.day}>
-                <rect
-                  className={`ss-chance-bar${day.day <= pastDays ? " past" : ""}${day.day === currentDay ? " current" : ""}${hoverDay === day.day ? " hover" : ""}`}
-                  x={x(index) + (slot - barWidth) / 2}
-                  y={y(value)}
-                  width={barWidth}
-                  height={Math.max(baseline - y(value), value > 0 ? 1 : 0)}
-                  style={{ fill: chanceFill(value, tone) }}
-                />
-                <rect
-                  className="ss-chart-hit"
-                  x={x(index)}
-                  y={top}
-                  width={slot}
-                  height={plotHeight}
-                  onMouseEnter={() => setHoverDay(day.day)}
-                  onClick={() => onSelectDay(day.day)}
-                >
-                  <title>{`${formatDay(day.date, "weekday")} · ${Math.round(value)}%`}</title>
-                </rect>
-              </g>
+              <rect
+                key={day.day}
+                className={`ss-chance-bar${observed ? " observed" : day.day <= pastDays ? " past" : ""}${day.day === currentDay ? " current" : ""}${hoverDay === day.day ? " hover" : ""}`}
+                x={x(index) + (slot - barWidth) / 2}
+                y={y(value)}
+                width={barWidth}
+                height={Math.max(baseline - y(value), value > 0 ? 1 : 0)}
+                style={observed ? undefined : { fill: chanceFill(value, tone) }}
+              />
             );
           });
-          if (cumulative) {
-            // Step outline: flat across each day, rising at the day the chance grows.
-            const points = days.flatMap((day, index) => {
-              const level = y(values[index] ?? 0);
-              return [`${x(index)},${level}`, `${x(index + 1)},${level}`];
-            });
-            const line = `M${points.join(" L")}`;
-            const area = `${line} L${x(days.length)},${baseline} L${x(0)},${baseline} Z`;
-            const marked = focusDay ? days[focusDay - 1] : null;
-            const markedValue = focusDay ? (values[focusDay - 1] ?? 0) : 0;
-            return (
-              <>
-                <EvenOddsLine x1={x(0)} x2={x(0) + plotWidth} y={y(50)} />
-                <path className="ss-cumulative-area" d={area} />
-                <path className="ss-cumulative-line" d={line} />
-                {marked ? <circle className="ss-cumulative-dot" cx={x(marked.day - 1) + slot / 2} cy={y(markedValue)} r={4} /> : null}
-                {days.map((day, index) => (
-                  <rect
-                    key={day.day}
-                    className="ss-chart-hit"
-                    x={x(index)}
-                    y={top}
-                    width={slot}
-                    height={plotHeight}
-                    onMouseEnter={() => setHoverDay(day.day)}
-                    onClick={() => onSelectDay(day.day)}
-                  >
-                    <title>{`By ${formatDay(day.date, "weekday")} · ${Math.round(values[index] ?? 0)}%`}</title>
-                  </rect>
-                ))}
-              </>
-            );
-          }
+          const linePoints = line
+            ? days.map((day, index) => ({ day: day.day, cx: x(index) + slot / 2, cy: y(line[index] ?? 0) }))
+            : [];
+          const markedPoint = focusDay && line ? linePoints[focusDay - 1] : null;
           return (
             <>
               <EvenOddsLine x1={x(0)} x2={x(0) + plotWidth} y={y(50)} />
+              {firstUnjudged !== null ? (
+                <g className="ss-unjudged" aria-hidden="true">
+                  <rect x={x(firstUnjudged)} y={top} width={x(days.length) - x(firstUnjudged)} height={plotHeight} style={{ fill: hatch }} />
+                </g>
+              ) : null}
               {bars}
+              {line ? (
+                <>
+                  <polyline className="ss-chance-line" points={linePoints.map((point) => `${point.cx},${point.cy}`).join(" ")} />
+                  {markedPoint ? <circle className="ss-chance-line-dot" cx={markedPoint.cx} cy={markedPoint.cy} r={4} /> : null}
+                </>
+              ) : null}
+              {hits}
             </>
           );
         }}
       </ChartFrame>
       <ChartLegend
-        items={[{ key: cumulative ? "chance-line" : "chance", label: legend }, ...(pastDays > 0 ? [{ key: "past", label: "Elapsed" }] : [])]}
+        items={[
+          { key: "chance", label: legend },
+          ...(line ? [{ key: "spell-line", label: lineLabel ?? "" }] : []),
+          ...(judgeableUntil !== undefined && judgeableUntil < days.length ? [{ key: "unjudged", label: "Can't tell yet" }] : []),
+          ...pastLegend(pastDays, observedDays),
+        ]}
       />
+      {note ? <p className="ss-frame-note">{note}</p> : null}
     </figure>
   );
+}
+
+/** A chance chart's tooltip for one day. */
+function chanceTitle(
+  day: SubseasonalSeries["days"][number],
+  value: number | null | undefined,
+  lineValue: number | null | undefined,
+  legend: string,
+  lineLabel: string | undefined,
+  cumulative: boolean,
+  observed: boolean,
+  unjudged: boolean,
+) {
+  const when = `${cumulative ? "By " : ""}${formatDay(day.date, "weekday")}`;
+  const parts = [`${when} · ${unjudged ? "can't tell yet" : `${Math.round(value ?? 0)}%`}${lineValue !== undefined && lineLabel ? ` ${legend.toLowerCase()}` : ""}`];
+  if (lineValue !== undefined && lineLabel) {
+    parts.push(`${Math.round(lineValue ?? 0)}% ${lineLabel.toLowerCase()}`);
+  }
+  return `${parts.join(" · ")}${observed ? " (observed)" : ""}`;
 }
 
 /** A faint 50% guide on chance charts: above it, more members reach the amount than not. */

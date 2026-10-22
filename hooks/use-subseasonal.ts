@@ -6,6 +6,8 @@ import { loadMapData } from "@/lib/map-data";
 import {
   availableLayers,
   dayIndexForDate,
+  DEFAULT_SPELL_DAYS_RANGE,
+  spellKindOf,
   defaultAggregation,
   layerAggregations,
   formatSubseasonalError,
@@ -24,6 +26,9 @@ import {
 import type {
   LayerQuery,
   RainStat,
+  SpellDays,
+  SpellKind,
+  SpellStat,
   SubseasonalAggregation,
   SubseasonalAreaLevel,
   SubseasonalAreaValues,
@@ -66,6 +71,9 @@ export function useSubseasonal({
   const [isUrlRead, setIsUrlRead] = useState(false);
   const [stat, setStatState] = useState<RainStat>("mean");
   const [threshold, setThresholdState] = useState<number | null>(null);
+  // Spell lengths the user chose (null = the official definition), and the spell statistic.
+  const [spellDays, setSpellDaysState] = useState<SpellDays>({ dry: null, wet: null });
+  const [spellStat, setSpellStatState] = useState<SpellStat>("chance");
 
   const [runs, setRuns] = useState<SubseasonalRun[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
@@ -77,7 +85,7 @@ export function useSubseasonal({
   const [layer, setLayerState] = useState<SubseasonalLayerKey>("rainfall");
   const [aggregation, setAggregationState] = useState<SubseasonalAggregation>("daily");
   const [day, setDayState] = useState<number>(0); // 0 = not chosen yet
-  const [week, setWeekState] = useState<number>(1);
+  const [week, setWeekState] = useState<number>(0); // 0 = not chosen yet: the week holding today
 
   useEffect(() => {
     const fromUrl = readUrlState(window.location.search);
@@ -85,6 +93,8 @@ export function useSubseasonal({
     setModelState(fromUrl.model);
     if (fromUrl.stat) setStatState(fromUrl.stat);
     if (fromUrl.threshold) setThresholdState(fromUrl.threshold);
+    if (fromUrl.spellDays) setSpellDaysState(fromUrl.spellDays);
+    if (fromUrl.spellStat) setSpellStatState(fromUrl.spellStat);
     setIsUrlRead(true);
     setLayerState(fromUrl.layer);
     setAggregationState(fromUrl.aggregation);
@@ -128,6 +138,22 @@ export function useSubseasonal({
   const effectiveThreshold =
     effectiveStat === "chance" ? (threshold !== null && chanceThresholds.includes(threshold) ? threshold : chanceThresholds[0]) : null;
   const requestModel = model && model !== defaultModel ? model : null;
+  // Spell lengths: the official ones come from the run; a choice equal to them is not sent.
+  const spellKind = spellKindOf(layer);
+  const spellDefaults = useMemo(
+    () => ({ dry: run?.thresholds.dry_spell_min_days ?? 5, wet: run?.thresholds.wet_spell_min_days ?? 3 }),
+    [run],
+  );
+  const spellRange = run?.spell_days_range ?? DEFAULT_SPELL_DAYS_RANGE;
+  const requestSpellDays = useMemo<SpellDays>(() => {
+    const pick = (kind: SpellKind) => {
+      const value = spellDays[kind];
+      const [low, high] = spellRange[kind];
+      return value !== null && value !== spellDefaults[kind] && value >= low && value <= high ? value : null;
+    };
+    return { dry: pick("dry"), wet: pick("wet") };
+  }, [spellDays, spellDefaults, spellRange]);
+  const spellSeriesKey = `${requestSpellDays.dry ?? ""}-${requestSpellDays.wet ?? ""}`;
 
   // A link to a layer this backend does not serve (e.g. onset on an older deployment) opens rainfall.
   useEffect(() => {
@@ -150,14 +176,17 @@ export function useSubseasonal({
         ? {
             model: requestModel,
             runId: run.run_id,
+            obs: run.observed_version ?? null,
             layer,
             aggregation: effectiveAggregation,
             index,
             stat: effectiveStat,
             threshold: effectiveThreshold,
+            spellDays: spellKind ? requestSpellDays[spellKind] : null,
+            spellStat: spellKind && effectiveAggregation !== "daily" ? spellStat : null,
           }
         : null,
-    [effectiveAggregation, effectiveStat, effectiveThreshold, index, isTimeSettled, layer, requestModel, run],
+    [effectiveAggregation, effectiveStat, effectiveThreshold, index, isTimeSettled, layer, requestModel, requestSpellDays, run, spellKind, spellStat],
   );
   const tileUrl = useMemo(() => (query ? subseasonalTileUrl(query) : null), [query]);
 
@@ -271,8 +300,8 @@ export function useSubseasonal({
     setSeriesError(null);
     const request =
       selection.kind === "point"
-        ? sampleSubseasonalPoint(requestModel, run.run_id, selection.latitude, selection.longitude, controller.signal)
-        : sampleSubseasonalArea(requestModel, run.run_id, selection.level, selection.name, controller.signal);
+        ? sampleSubseasonalPoint(requestModel, run.run_id, selection.latitude, selection.longitude, controller.signal, run.observed_version, requestSpellDays)
+        : sampleSubseasonalArea(requestModel, run.run_id, selection.level, selection.name, controller.signal, run.observed_version, requestSpellDays);
     request
       .then((payload) => setSeries(payload))
       .catch((error: unknown) => {
@@ -287,7 +316,9 @@ export function useSubseasonal({
         }
       });
     return () => controller.abort();
-  }, [active, requestModel, run, selection, seriesAttempt]);
+    // requestSpellDays is read through spellSeriesKey, so an equal choice does not refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, requestModel, run, selection, seriesAttempt, spellSeriesKey]);
 
   // Geography mode switches clear an area selection made at the other level.
   useEffect(() => {
@@ -347,6 +378,8 @@ export function useSubseasonal({
       stat: effectiveStat,
       threshold: effectiveThreshold,
       run: run && run.run_id !== activeRunId ? run.run_id : null,
+      spellDays: requestSpellDays,
+      spellStat,
       layer,
       aggregation: effectiveAggregation,
       day: day || null,
@@ -354,7 +387,7 @@ export function useSubseasonal({
       point: selection?.kind === "point" ? { latitude: selection.latitude, longitude: selection.longitude } : null,
       area: selection?.kind === "area" ? { level: selection.level, name: selection.name } : null,
     });
-  }, [active, activeRunId, day, effectiveAggregation, effectiveStat, effectiveThreshold, layer, requestModel, run, selection, week]);
+  }, [active, activeRunId, day, effectiveAggregation, effectiveStat, effectiveThreshold, layer, requestModel, requestSpellDays, run, selection, spellStat, week]);
 
   /* ------------------------------------------------------------------ playback: advance only after the current frame's tiles loaded */
   const lastStepRef = useRef(0);
@@ -464,6 +497,10 @@ export function useSubseasonal({
   );
 
   const setStat = useCallback((next: RainStat) => setStatState(next), []);
+  const setSpellDays = useCallback((kind: SpellKind, next: number) => {
+    setSpellDaysState((current) => (current[kind] === next ? current : { ...current, [kind]: next }));
+  }, []);
+  const setSpellStat = useCallback((next: SpellStat) => setSpellStatState(next), []);
   const setThreshold = useCallback((next: number) => setThresholdState(next), []);
 
   const selectPoint = useCallback((latitude: number, longitude: number) => {
@@ -500,6 +537,15 @@ export function useSubseasonal({
     threshold: effectiveThreshold,
     chanceThresholds,
     setThreshold,
+    /** The shown layer's spell kind (null for other layers), its chosen length and the choices. */
+    spellKind,
+    spellDays: { dry: requestSpellDays.dry ?? spellDefaults.dry, wet: requestSpellDays.wet ?? spellDefaults.wet },
+    spellDefaults,
+    spellRange,
+    setSpellDays,
+    /** Spell layers, for a week or the run: chance of a spell, or days in spells. */
+    spellStat,
+    setSpellStat,
     runs,
     run,
     activeRunId,

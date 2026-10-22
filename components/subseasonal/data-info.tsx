@@ -1,7 +1,7 @@
 "use client";
 
 import { useSiteContent } from "@/lib/content/content-context";
-import { formatDay } from "@/lib/subseasonal";
+import { formatDay, isInterpolatedRun } from "@/lib/subseasonal";
 import type { SubseasonalLayerKey, SubseasonalProvenance, SubseasonalRun } from "@/lib/subseasonal";
 
 /** "heun · 20 steps · guidance 3" from whichever sampler settings the run recorded. */
@@ -24,8 +24,8 @@ function membersText(run: SubseasonalRun) {
 
 /**
  * What the drawer is showing and where it came from: the forecast and downscaling model (with the
- * checkpoint and sampler, so a figure can be traced back to the exact model version) and a plain
- * statement that no observed rainfall is shown.
+ * checkpoint and sampler, so a figure can be traced back to the exact model version) and how far
+ * observed rainfall reaches into the run.
  */
 export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: SubseasonalLayerKey }) {
   const provenance = run.provenance ?? {};
@@ -50,9 +50,11 @@ export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: Subseason
 
         <dt>Downscaling model</dt>
         <dd>
-          {hasModel ? (
+          {provenance.model_type?.includes("bilinear") ? (
+            <>Bilinear interpolation to 0.1°, no machine learning (the baseline)</>
+          ) : hasModel ? (
             <>
-              {provenance.model_type ?? run.model_label}
+              {run.downscaling_label ?? provenance.model_type ?? run.model_label}
               {provenance.checkpoint ? (
                 <>
                   {" · checkpoint "}
@@ -61,7 +63,7 @@ export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: Subseason
               ) : null}
             </>
           ) : (
-            <>{run.model_label} · version not recorded for this run</>
+            <>{run.downscaling_label ?? run.model_label} · version not recorded for this run</>
           )}
         </dd>
 
@@ -78,10 +80,20 @@ export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: Subseason
         <dt>Grid</dt>
         <dd>
           {run.grid_resolution_degrees ?? 0.1}°{dataInfo.gridNote ? ` (${dataInfo.gridNote})` : ""}
+          {isInterpolatedRun(run) ? " · interpolated from the model's own coarser grid, so real detail is coarser" : ""}
         </dd>
 
         <dt>Observed rainfall</dt>
-        <dd>{dataInfo.observedRainfall}</dd>
+        <dd>
+          {run.observed_through ? (
+            <>
+              <strong data-testid="ss-data-observed">Observed up to {formatDay(run.observed_through, "long")}</strong>
+              {run.observed_synthetic ? " (demo observations)" : ""}. {dataInfo.observedRainfall}
+            </>
+          ) : (
+            <>No observations yet for this run&apos;s elapsed days; every value shown is forecast.</>
+          )}
+        </dd>
 
         {provenance.model_dir || provenance.checkpoint_dir ? (
           <>

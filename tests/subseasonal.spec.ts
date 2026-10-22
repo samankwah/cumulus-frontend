@@ -23,7 +23,86 @@ const PNG_1X1 = Buffer.from(
  * `onset`: serve a backend with the onset layer (the runs fixture predates it).
  * `issueDates`: also keep the run issued a week earlier, so the issue date can be chosen.
  */
-type MockOptions = { failRuns?: boolean; indicatorPeriods?: boolean; onset?: boolean; issueDates?: boolean; ensembleArea?: boolean };
+type MockOptions = {
+  failRuns?: boolean;
+  indicatorPeriods?: boolean;
+  onset?: boolean;
+  issueDates?: boolean;
+  ensembleArea?: boolean;
+  /** Serve the model registry: S2S source x downscaler, as the backend describes it. */
+  models?: boolean;
+  /** The run and series as a 10-member ensemble down to each day (spreads, spell chances). */
+  ensembleDays?: boolean;
+  /** Observations (IMERG) fill the first OBSERVED_DAYS elapsed days. */
+  observed?: boolean;
+};
+
+/** With `observed`: days 1-20 observed (to 14 Oct); 15-18 Oct are elapsed but still awaiting observations. */
+const OBSERVED_DAYS = 20;
+
+type ModelRow = [string, string, string, string, string, number, boolean];
+const MODEL_ROWS: ModelRow[] = [
+  ["aurora_imerg_unet", "aurora_imerg", "Aurora · IMERG head", "unet", "UNet", 1, true],
+  ["aurora_imerg_diffusion", "aurora_imerg", "Aurora · IMERG head", "diffusion", "Diffusion", 10, true],
+  ["aurora_imerg_bilinear", "aurora_imerg", "Aurora · IMERG head", "bilinear", "Bilinear", 1, true],
+  ["aurora_era5_unet", "aurora_era5", "Aurora · ERA5 head", "unet", "UNet", 1, true],
+  ["aurora_era5_diffusion", "aurora_era5", "Aurora · ERA5 head", "diffusion", "Diffusion", 10, true],
+  ["aurora_era5_bilinear", "aurora_era5", "Aurora · ERA5 head", "bilinear", "Bilinear", 1, false],
+  ["ifs_unet", "ifs", "ECMWF IFS", "unet", "UNet", 1, true],
+  ["ifs_diffusion", "ifs", "ECMWF IFS", "diffusion", "Diffusion", 10, true],
+  ["ifs_bilinear", "ifs", "ECMWF IFS", "bilinear", "Bilinear", 1, true],
+];
+const MODELS = {
+  default_model: "aurora_imerg_unet",
+  models: MODEL_ROWS.map(([id, family, family_label, downscaling, downscaling_label, members, available]) => ({
+    id,
+    label: id,
+    source_label: id,
+    family,
+    family_label,
+    downscaling,
+    downscaling_label,
+    available,
+    members: available ? members : null,
+    synthetic: false,
+  })),
+};
+
+/** Days marked observed, with what had been forecast for them. */
+function withObserved<T extends { days: { day: number; value: number | null }[] }>(series: T, enabled: boolean) {
+  if (!enabled) return series;
+  return {
+    ...series,
+    observed_days: OBSERVED_DAYS,
+    observed_through: "2026-10-14",
+    observed_source: "IMERG late run (NASA GPM)",
+    days: series.days.map((day) => (day.day <= OBSERVED_DAYS ? { ...day, observed: true, forecast_value: 9.9 } : { ...day, observed: false })),
+  };
+}
+
+/** Each day as a 10-member ensemble: a spread around the value, and spell chances (a dry spell begins on day 25). */
+function withEnsembleDays<T extends { days: { day: number; value: number | null; spell?: string | null }[] }>(series: T, enabled: boolean) {
+  if (!enabled) return series;
+  return {
+    ...series,
+    members: 10,
+    spell_ahead_days: 14,
+    days: series.days.map((day) => {
+      const value = day.value ?? 0;
+      const inDry = day.spell === "dry" ? 100 : day.day > 36 ? 30 : 0;
+      return {
+        ...day,
+        spread: { min: value * 0.2, p10: value * 0.4, p25: value * 0.7, p50: value, p75: value * 1.3, p90: value * 1.6, max: value * 2, mean: value },
+        wet_prob: value >= 1 ? 80 : 10,
+        spell_prob: { dry: inDry, wet: day.spell === "wet" ? 100 : 0 },
+        spell_start_prob: { dry: day.day === 25 ? 70 : day.day === 37 ? 20 : 0, wet: 0 },
+        spell_ahead_prob: { dry: day.day >= 12 && day.day <= 25 ? 70 : 20, wet: 0 },
+        extreme_prob: 0,
+        chance: { "10": value >= 10 ? 90 : 10, "25": 0, "50": 0 },
+      };
+    }),
+  };
+}
 
 const EARLIER_RUN_ID = "ifs_unet_2026091800";
 
@@ -74,7 +153,26 @@ const runsWithOnset = {
 
 function runsPayload(options: MockOptions) {
   const base = options.onset ? runsWithOnset : options.indicatorPeriods ? runsWithIndicatorPeriods : runs;
-  return options.issueDates ? { ...base, runs: [...base.runs, ...base.runs.map(earlierRun)] } : base;
+  const kept = options.issueDates ? { ...base, runs: [...base.runs, ...base.runs.map(earlierRun)] } : base;
+  if (!options.observed && !options.ensembleDays) return kept;
+  return {
+    ...kept,
+    runs: kept.runs.map((run) => ({
+      ...withObserved(run, Boolean(options.observed)),
+      ...(options.ensembleDays
+        ? {
+            members: 10,
+            ensemble: "ensemble",
+            // An ensemble backend also offers the extreme-rain layer (the fixture predates it).
+            layers: [
+              ...run.layers,
+              { layer: "extreme_rain", label: "Extreme rain", description: "Chance of a 50 mm+ day.", aggregations: ["total", "daily", "weekly"] },
+            ],
+          }
+        : {}),
+      ...(options.observed ? { observed_through: "2026-10-14", observed_source: "IMERG late run (NASA GPM)", observed_version: "v1" } : {}),
+    })),
+  };
 }
 
 /** Series responses from an onset-aware backend carry the onset and its rule. */
@@ -158,6 +256,8 @@ async function mockSubseasonal(page: Page, options: MockOptions = {}) {
           aggregation,
           index,
           title,
+          observed: Boolean(options.observed) && aggregation === "daily" && index <= OBSERVED_DAYS,
+          observed_days: options.observed ? OBSERVED_DAYS : 0,
           index_count: aggregation === "daily" ? 46 : aggregation === "weekly" ? 7 : 1,
           tile_url: `/subseasonal/tiles/{z}/{x}/{y}.png?${params.toString()}`,
         });
@@ -181,11 +281,14 @@ async function mockSubseasonal(page: Page, options: MockOptions = {}) {
           aggregation: params.get("aggregation"),
           index: Number(params.get("index")),
         });
+      case "/subseasonal/models":
+        return options.models ? json(route, MODELS) : route.fulfill({ status: 404, body: "" });
       case "/subseasonal/sample":
-        return json(route, withOnset(samplePoint, Boolean(options.onset)));
+        return json(route, withObserved(withOnset(samplePoint, Boolean(options.onset)), Boolean(options.observed)));
       case "/subseasonal/area": {
         const area = withOnset({ ...areaNorthern, name: params.get("name") ?? areaNorthern.name }, Boolean(options.onset));
-        return json(route, options.ensembleArea ? asEnsemble(area) : area);
+        const ensemble = options.ensembleArea ? asEnsemble(area) : area;
+        return json(route, withObserved(withEnsembleDays(ensemble, Boolean(options.ensembleDays)), Boolean(options.observed)));
       }
       default:
         return route.fulfill({ status: 404, body: "" });
@@ -570,7 +673,7 @@ test("an ensemble's weekly spell days show box plots around the members' mean", 
   await mockSubseasonal(page, { ensembleArea: true, indicatorPeriods: true });
   await page.goto("/?layer=dry_spell_days&agg=weekly&week=4&area=region&name=Northern", { waitUntil: "domcontentloaded" });
   const chart = page.getByTestId("subseasonal-weekly-chart");
-  await expect(chart).toContainText("Days in dry spells per week");
+  await expect(chart).toContainText("Days in 5+ day dry spells per week");
   // One box per week, and the legend explains them.
   await expect(chart.locator(".ss-spread-box")).toHaveCount(7);
   await expect(chart).toContainText("25–75%");
@@ -582,10 +685,130 @@ test("an ensemble's weekly spell days show box plots around the members' mean", 
   await expect(page.getByTestId("subseasonal-spells").first()).toContainText("Chance 80% · 8 of 10 members");
 });
 
-test("the rain layer lists the runs of dry and wet days with their chances", async ({ page }) => {
+test("runs of dry and wet days are listed only in their own spell layers", async ({ page }) => {
   await mockSubseasonal(page, { ensembleArea: true });
-  await page.goto("/?layer=rainfall&area=region&name=Northern", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Runs of dry days")).toBeVisible();
+  await page.goto("/?layer=wet_spell_days&area=region&name=Northern", { waitUntil: "domcontentloaded" });
   await expect(page.getByText("Runs of wet days")).toBeVisible();
-  await expect(page.getByTestId("subseasonal-spells")).toHaveCount(2);
+  await expect(page.getByTestId("subseasonal-spells")).toHaveCount(1);
+  // Rainfall and rain days do not repeat them.
+  for (const layer of ["rainfall", "rainy_days"]) {
+    await page.goto(`/?layer=${layer}&area=region&name=Northern`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("subseasonal-chart").first()).toBeVisible();
+    await expect(page.getByTestId("subseasonal-spells")).toHaveCount(0);
+  }
+});
+
+test("the model picker offers the forecast model and its downscaling as two choices", async ({ page }) => {
+  const { requests } = await mockSubseasonal(page, { models: true });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const family = page.getByTestId("ss-family");
+  const method = page.getByTestId("ss-downscaling");
+  await expect(family).toContainText("Aurora-IMERG");
+  await expect(method).toContainText("UNet");
+  // The default model is not named in requests or the URL.
+  expect(requests.filter((url) => url.pathname === "/subseasonal/runs").every((url) => !url.searchParams.has("model"))).toBe(true);
+  await family.click();
+  await page.getByTestId("ss-family-option-aurora_era5").click();
+  await expect(page).toHaveURL(/model=aurora_era5_unet/);
+  // Aurora-ERA5 has no bilinear run yet: listed, but disabled.
+  await method.click();
+  await expect(page.getByTestId("ss-downscaling-option-bilinear")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("ss-downscaling-option-bilinear")).toContainText("No Aurora · ERA5 head run yet");
+  // Picking the ensemble keeps the S2S source; switching the source keeps the downscaler.
+  await page.getByTestId("ss-downscaling-option-diffusion").click();
+  await expect(page).toHaveURL(/model=aurora_era5_diffusion/);
+  await family.click();
+  await page.getByTestId("ss-family-option-ifs").click();
+  await expect(page).toHaveURL(/model=ifs_diffusion/);
+  await expect
+    .poll(() => requests.some((url) => url.pathname === "/subseasonal/runs" && url.searchParams.get("model") === "ifs_diffusion"))
+    .toBe(true);
+});
+
+test("observed days replace the forecast on elapsed days", async ({ page }) => {
+  const { requests } = await mockSubseasonal(page, { observed: true, ensembleDays: true, ensembleArea: true });
+  await page.goto("/?area=region&name=Northern&day=5", { waitUntil: "domcontentloaded" });
+  // The headline says what fell, and what had been forecast.
+  const strip = page.getByTestId("drawer-summary-strip");
+  await expect(strip).toContainText("15");
+  await expect(strip).toContainText("Forecast mean was 9.9 mm");
+  // Observed days are bars, forecast days box plots; the legend names both, and the gap.
+  const chart = page.getByTestId("subseasonal-chart").first();
+  await expect(chart.locator(".ss-observed-bar")).toHaveCount(OBSERVED_DAYS);
+  await expect(chart.locator(".ss-spread")).toHaveCount(46 - OBSERVED_DAYS);
+  await expect(chart).toContainText("Observed");
+  await expect(chart).toContainText("Awaiting obs.");
+  // The map's day is observed: the dock says so, and requests carry the observations' version.
+  await expect(page.getByTestId("ss-dock-observed")).toContainText("IMERG");
+  await expect(page.getByTestId("timeline-observed")).toBeVisible();
+  expect(requests.some((url) => url.pathname === "/subseasonal/area" && url.searchParams.get("obs") === "v1")).toBe(true);
+  // About this data says how far the observations reach.
+  await page.getByText("About this data").click();
+  await expect(page.getByTestId("ss-data-observed")).toContainText("14 Oct 2026");
+});
+
+test("the spell chart shows the chance a spell starts with the chance of being in one", async ({ page }) => {
+  await mockSubseasonal(page, { ensembleDays: true, ensembleArea: true, indicatorPeriods: true });
+  await page.goto("/?layer=dry_spell_days&agg=daily&day=25&area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  const chart = page.getByTestId("subseasonal-chance-chart");
+  await expect(chart).toContainText("Dry spells of 5+ days: chance (%)");
+  await expect(chart).toContainText("Starts that day");
+  await expect(chart).toContainText("In a dry spell");
+  await expect(chart.locator(".ss-chance-line")).toHaveCount(1);
+  // Starts in the last four days cannot be judged inside the run: hatched.
+  await expect(chart.locator(".ss-unjudged")).toHaveCount(1);
+  // The headline gives the spell ahead: starts that day, and within two weeks.
+  const strip = page.getByTestId("drawer-summary-strip");
+  await expect(strip).toContainText("Starts that day 70%");
+  await expect(strip).toContainText("within 14 days 70%");
+});
+
+test("the chance view shows the amounts before their chance, like every panel", async ({ page }) => {
+  await mockSubseasonal(page, { ensembleDays: true, ensembleArea: true });
+  await page.goto("/?stat=chance&thr=10&area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  const titles = page.locator(".ss-drawer .ss-frame-title strong");
+  await expect(titles.first()).toContainText("Daily rain");
+  await expect(titles.nth(1)).toContainText("Chance of 10 mm+ in a day");
+});
+
+test("the spell length slider changes the map, the drawer and the advice", async ({ page }) => {
+  const { requests } = await mockSubseasonal(page, { indicatorPeriods: true, ensembleArea: true });
+  await page.goto("/?layer=dry_spell_days&agg=weekly&week=3&area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  const value = page.getByTestId("ss-spell-value");
+  await expect(value).toContainText("5+");
+  // The official length is not written to the URL or sent.
+  expect(page.url()).not.toContain("dsd=");
+  await page.getByTestId("ss-spell-longer").click();
+  await page.getByTestId("ss-spell-longer").click();
+  await expect(value).toContainText("7+");
+  await expect(page).toHaveURL(/dsd=7/);
+  await expect(page.getByTestId("ss-layer-dry_spell_days")).toContainText("≥7 dry days");
+  await expect
+    .poll(() => requests.some((url) => url.pathname === "/subseasonal/layer" && url.searchParams.get("spell_days") === "7"))
+    .toBe(true);
+  await expect
+    .poll(() => requests.some((url) => url.pathname === "/subseasonal/area" && url.searchParams.get("dry_spell_days") === "7"))
+    .toBe(true);
+  // For a week the map shows the chance of such a spell; Days switches to the days inside spells.
+  await page.getByTestId("ss-spell-stat-days").click();
+  await expect(page).toHaveURL(/ss=days/);
+  await expect
+    .poll(() => requests.some((url) => url.pathname === "/subseasonal/layer" && url.searchParams.get("stat") === "days"))
+    .toBe(true);
+  // Back to GMet's definition: the official length is not written to the URL.
+  await page.getByTestId("ss-spell-shorter").click();
+  await page.getByTestId("ss-spell-shorter").click();
+  await expect(value).toContainText("5+");
+  await expect(page).not.toHaveURL(/dsd=/);
+});
+
+test("the whole-run extreme chart shows each day's chance with the chance of one by that date", async ({ page }) => {
+  await mockSubseasonal(page, { ensembleDays: true, ensembleArea: true, indicatorPeriods: true });
+  await page.goto("/?layer=extreme_rain&agg=total&area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  const chart = page.getByTestId("subseasonal-chance-chart");
+  await expect(chart).toContainText("Chance of a 50 mm+ day (%)");
+  await expect(chart).toContainText("That day");
+  await expect(chart).toContainText("At least one by this date");
+  await expect(chart.locator(".ss-chance-line")).toHaveCount(1);
+  await expect(chart.locator(".ss-chance-bar").first()).toBeAttached();
 });

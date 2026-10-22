@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { formatAmount, formatDay, formatRange, pastDayCount, todayIso } from "@/lib/subseasonal";
+import { formatAmount, formatDay, formatRange, pastDayCount, todayIso, weeklyWettestDay } from "@/lib/subseasonal";
 import type { SpellKind, SubseasonalOnset, SubseasonalSeries, SubseasonalSpread } from "@/lib/subseasonal";
 
 function useWidth<T extends HTMLElement>() {
@@ -267,17 +267,27 @@ function chanceFill(value: number, tone: string) {
   return color;
 }
 
-/** "median 3.2 mm · members 0.4–18 mm": the spread in words for readouts and tooltips. */
-function spreadText(spread: SubseasonalSpread | null | undefined) {
+/** "Median 3.2 mm · middle half 1–5 mm · range 0.4–18 mm": the spread in words for readouts and tooltips. */
+function spreadText(spread: SubseasonalSpread | null | undefined, unit: "mm" | "days" = "mm") {
   if (!spread) {
     return "";
   }
-  return `Median ${formatAmount(spread.p50, "mm")} · middle half ${short(spread.p25)}–${formatAmount(spread.p75, "mm")} · range ${short(spread.min)}–${formatAmount(spread.max, "mm")}`;
+  const amount = (value: number | null | undefined) => (unit === "days" ? `${dayCount(value)} days` : formatAmount(value, "mm"));
+  const bare = (value: number | null | undefined) => (unit === "days" ? dayCount(value) : short(value));
+  return `Median ${amount(spread.p50)} · middle half ${bare(spread.p25)}–${amount(spread.p75)} · range ${bare(spread.min)}–${amount(spread.max)}`;
 }
 
 /** A number without its unit, for ranges that name the unit once. */
 function short(value: number | null | undefined) {
   return formatAmount(value, "mm").replace(/ mm$/, "");
+}
+
+/** A day count from a spread (members' average can be fractional): "4", "4.3". */
+function dayCount(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "–";
+  }
+  return String(Math.round(value * 10) / 10);
 }
 
 /** Top of a spread chart's axis: the 90th percentile with headroom, so one wild member doesn't flatten the rest. */
@@ -528,14 +538,17 @@ export function WeeklyChart({
   centreLabel = "Ensemble mean",
   lineMm,
   lineLabel,
+  lineTone = "amount",
 }: {
   /** A dashed amount line (the amount a Chance view counts), with its legend words. */
   lineMm?: number;
   lineLabel?: string;
+  /** "extreme": the red extreme-rain line, as on the daily chart; "amount": a chosen amount (dark). */
+  lineTone?: "amount" | "extreme";
   series: SubseasonalSeries;
   /** One value per entry of `series.weeks`. */
   values: (number | null)[];
-  /** Ensemble rainfall: a box-and-whisker per week, with `values` (mean or median) as the dot. */
+  /** Ensembles: a box-and-whisker per week (rain amounts or day counts), with `values` (mean or median) as the dot. */
   spreads?: (SubseasonalSpread | null | undefined)[];
   centreLabel?: string;
   currentWeek: number | null;
@@ -560,7 +573,7 @@ export function WeeklyChart({
         ? weeks.length
         : pastWeekIndex + (pastDays - weeks[pastWeekIndex].start_day + 1) / weeks[pastWeekIndex].days;
   const describe = (value: number | null) =>
-    unit === "mm" ? formatAmount(value, "mm") : unit === "%" ? `${Math.round(value ?? 0)}%` : `${value ?? 0} days`;
+    unit === "mm" ? formatAmount(value, "mm") : unit === "%" ? `${Math.round(value ?? 0)}%` : `${dayCount(value ?? 0)} days`;
   const hasSpread = Boolean(spreads?.some(Boolean));
 
   return (
@@ -603,7 +616,7 @@ export function WeeklyChart({
                   className={`ss-week${week.week === currentWeek ? " current" : ""}${isPast ? " past" : ""}${onSelectWeek ? " selectable" : ""}`}
                   onClick={() => onSelectWeek?.(week.week)}
                 >
-                  <title>{`${weekTitle(week)} · ${describe(raw)}`}</title>
+                  <title>{`${weekTitle(week)} · ${describe(raw)}${hasSpread && spreads?.[index] && unit !== "%" ? ` · ${spreadText(spreads[index], unit)}` : ""}`}</title>
                   {hasSpread && spreads?.[index] ? (
                     <>
                       <SpreadBox spread={spreads[index]!} centre={centre} width={barWidth} y={y} axisMax={max} />
@@ -632,7 +645,15 @@ export function WeeklyChart({
               <>
                 {unit === "%" ? <EvenOddsLine x1={x(0)} x2={x(0) + plotWidth} y={y(50)} /> : null}
                 {marks}
-                {lineMm ? <line className="ss-chart-threshold extreme ss-amount-line" x1={x(0)} x2={x(0) + plotWidth} y1={y(lineMm)} y2={y(lineMm)} /> : null}
+                {lineMm ? (
+                  <line
+                    className={`ss-chart-threshold extreme${lineTone === "amount" ? " ss-amount-line" : ""}`}
+                    x1={x(0)}
+                    x2={x(0) + plotWidth}
+                    y1={y(lineMm)}
+                    y2={y(lineMm)}
+                  />
+                ) : null}
               </>
             );
           }}
@@ -648,7 +669,7 @@ export function WeeklyChart({
                 { key: "spread-mean-dot", label: centreLabel },
               ]
             : [{ key: unit === "%" ? "chance" : "week", label: legend }]),
-          ...(lineMm ? [{ key: "extreme-line amount-line", label: lineLabel ?? `${lineMm} mm` }] : []),
+          ...(lineMm ? [{ key: lineTone === "amount" ? "extreme-line amount-line" : "extreme-line", label: lineLabel ?? `${lineMm} mm` }] : []),
           ...(currentWeek && !hasSpread ? [{ key: "week-current", label: "On map" }] : []),
           ...(pastDays > 0 ? [{ key: "past", label: "Elapsed" }] : []),
         ]}
@@ -659,6 +680,40 @@ export function WeeklyChart({
         </p>
       ) : null}
     </figure>
+  );
+}
+
+/** Each week's wettest day, against the extreme-rain amount: box plots across members for an ensemble. */
+export function WeeklyWettestDayChart({
+  series,
+  currentWeek,
+  onSelectWeek,
+  thresholdMm,
+}: {
+  series: SubseasonalSeries;
+  currentWeek: number | null;
+  onSelectWeek?: (week: number) => void;
+  thresholdMm: number;
+}) {
+  const wettest = weeklyWettestDay(series);
+  const hasSpread = wettest.some((week) => week.spread);
+  return (
+    <WeeklyChart
+      series={series}
+      values={wettest.map((week) => week.value)}
+      spreads={hasSpread ? wettest.map((week) => week.spread) : undefined}
+      centreLabel="Mean"
+      lineMm={thresholdMm}
+      lineLabel={`${thresholdMm} mm`}
+      lineTone="extreme"
+      currentWeek={currentWeek}
+      onSelectWeek={onSelectWeek}
+      title="Wettest day each week (mm)"
+      yLabel="Rainfall (mm)"
+      legend="Wettest day"
+      unit="mm"
+      tone="rain"
+    />
   );
 }
 

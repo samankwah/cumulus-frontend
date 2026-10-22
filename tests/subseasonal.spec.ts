@@ -23,7 +23,7 @@ const PNG_1X1 = Buffer.from(
  * `onset`: serve a backend with the onset layer (the runs fixture predates it).
  * `issueDates`: also keep the run issued a week earlier, so the issue date can be chosen.
  */
-type MockOptions = { failRuns?: boolean; indicatorPeriods?: boolean; onset?: boolean; issueDates?: boolean };
+type MockOptions = { failRuns?: boolean; indicatorPeriods?: boolean; onset?: boolean; issueDates?: boolean; ensembleArea?: boolean };
 
 const EARLIER_RUN_ID = "ifs_unet_2026091800";
 
@@ -92,6 +92,26 @@ const runsWithIndicatorPeriods = {
 
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+}
+
+/**
+ * The area fixture as a 10-member ensemble: each week carries the members' spread of days in a dry
+ * spell, in a wet spell and with rain (week n: members between n-1 and n+1 days, mean n).
+ */
+function asEnsemble<T extends { weeks: { week: number; days: number }[]; spells: object[] }>(area: T) {
+  const spread = (centre: number, limit: number) => {
+    const at = (value: number) => Math.max(0, Math.min(limit, value));
+    return { min: at(centre - 1), p10: at(centre - 1), p25: at(centre - 0.5), p50: at(centre), p75: at(centre + 0.5), p90: at(centre + 1), max: at(centre + 1), mean: at(centre) };
+  };
+  return {
+    ...area,
+    members: 10,
+    spells: area.spells.map((spell) => ({ ...spell, probability: 80 })),
+    weeks: area.weeks.map((week) => ({
+      ...week,
+      day_counts: { dry_spell: spread(week.week, week.days), wet_spell: spread(1, week.days), rainy: spread(2, week.days) },
+    })),
+  };
 }
 
 /** Serve the 46-day API from fixtures captured from the real backend; returns the request log. */
@@ -163,8 +183,10 @@ async function mockSubseasonal(page: Page, options: MockOptions = {}) {
         });
       case "/subseasonal/sample":
         return json(route, withOnset(samplePoint, Boolean(options.onset)));
-      case "/subseasonal/area":
-        return json(route, withOnset({ ...areaNorthern, name: params.get("name") ?? areaNorthern.name }, Boolean(options.onset)));
+      case "/subseasonal/area": {
+        const area = withOnset({ ...areaNorthern, name: params.get("name") ?? areaNorthern.name }, Boolean(options.onset));
+        return json(route, options.ensembleArea ? asEnsemble(area) : area);
+      }
       default:
         return route.fulfill({ status: 404, body: "" });
     }
@@ -541,4 +563,29 @@ test("area search finds districts, regions and regional capitals and selects the
   await expect(page.getByTestId("area-search-empty")).toContainText("No region or district matches");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("area-search-input")).toHaveCount(0);
+});
+
+
+test("an ensemble's weekly spell days show box plots around the members' mean", async ({ page }) => {
+  await mockSubseasonal(page, { ensembleArea: true, indicatorPeriods: true });
+  await page.goto("/?layer=dry_spell_days&agg=weekly&week=4&area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  const chart = page.getByTestId("subseasonal-weekly-chart");
+  await expect(chart).toContainText("Days in dry spells per week");
+  // One box per week, and the legend explains them.
+  await expect(chart.locator(".ss-spread-box")).toHaveCount(7);
+  await expect(chart).toContainText("25–75%");
+  await expect(chart).toContainText("Mean");
+  // The week's headline is the members' mean (week 4 in the fixture: 4 days, members 3 to 5).
+  await expect(page.getByTestId("drawer-summary-strip")).toContainText("Mean of 10 members");
+  // Each run of dry days says how likely it is across the members.
+  await expect(page.getByText("Runs of dry days")).toBeVisible();
+  await expect(page.getByTestId("subseasonal-spells").first()).toContainText("Chance 80% · 8 of 10 members");
+});
+
+test("the rain layer lists the runs of dry and wet days with their chances", async ({ page }) => {
+  await mockSubseasonal(page, { ensembleArea: true });
+  await page.goto("/?layer=rainfall&area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Runs of dry days")).toBeVisible();
+  await expect(page.getByText("Runs of wet days")).toBeVisible();
+  await expect(page.getByTestId("subseasonal-spells")).toHaveCount(2);
 });

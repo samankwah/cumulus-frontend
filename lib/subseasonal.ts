@@ -86,7 +86,15 @@ export type SubseasonalWeek = {
   members?: (number | null)[] | null;
   chance?: Record<string, number | null> | null;
   extreme_prob?: number | null;
+  /** Ensemble only: each member's days in a dry spell / wet spell / with rain this week, as a spread. */
+  day_counts?: { dry_spell?: SubseasonalSpread | null; wet_spell?: SubseasonalSpread | null; rainy?: SubseasonalSpread | null } | null;
 };
+
+/** Which of a week's day counts a layer shows: dry-spell days, wet-spell days or rain days. */
+export function dayCountSpread(week: SubseasonalWeek, kind: SpellKind | null) {
+  const counts = week.day_counts;
+  return (kind === "dry" ? counts?.dry_spell : kind === "wet" ? counts?.wet_spell : counts?.rainy) ?? null;
+}
 
 export type SubseasonalLayerOption = {
   layer: SubseasonalLayerKey;
@@ -307,6 +315,52 @@ export function medianOf(values: (number | null)[] | null | undefined) {
   if (!sorted.length) return null;
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+/** The `q`th percentile (0-100) of sorted values, interpolating like numpy's default. */
+function percentile(sorted: number[], q: number) {
+  const at = ((sorted.length - 1) * q) / 100;
+  const low = Math.floor(at);
+  const high = Math.ceil(at);
+  return sorted[low] + (sorted[high] - sorted[low]) * (at - low);
+}
+
+/** Box-plot numbers (min, 10/25/50/75/90th percentiles, max, mean) for member values; null without any. */
+export function spreadOf(values: (number | null)[] | null | undefined): SubseasonalSpread | null {
+  const sorted = finiteValues(values).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const mean = sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
+  return {
+    min: sorted[0],
+    p10: percentile(sorted, 10),
+    p25: percentile(sorted, 25),
+    p50: percentile(sorted, 50),
+    p75: percentile(sorted, 75),
+    p90: percentile(sorted, 90),
+    max: sorted[sorted.length - 1],
+    mean,
+  };
+}
+
+/**
+ * Each week's wettest day: for an ensemble, every member's own wettest day as a spread (the
+ * centre is the members' mean); for a single run, the wettest day's amount.
+ */
+export function weeklyWettestDay(series: SubseasonalSeries) {
+  return series.weeks.map((week) => {
+    const days = series.days.filter((day) => day.day >= week.start_day && day.day <= week.end_day);
+    const memberCount = Math.max(0, ...days.map((day) => day.members?.length ?? 0));
+    if (memberCount > 1) {
+      const wettest = Array.from({ length: memberCount }, (_, member) => {
+        const amounts = days.map((day) => day.members?.[member]).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+        return amounts.length ? Math.max(...amounts) : null;
+      });
+      const spread = spreadOf(wettest);
+      return { value: spread?.mean ?? null, spread };
+    }
+    const amounts = days.map((day) => day.value).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    return { value: amounts.length ? Math.max(...amounts) : null, spread: null };
+  });
 }
 
 /** % of members with at least `mm`; null without members. */

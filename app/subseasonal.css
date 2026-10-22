@@ -3599,3 +3599,37 @@
     animation: none;
   }
 }
+
+/* Ensemble day counts (dry spells, wet spells, rain days): box plots in the layer's own colour. */
+.ss-chart:is(.tone-dry, .tone-wet, .tone-rainy) .ss-spread-box,
+.ss-chart:is(.tone-dry, .tone-wet, .tone-rainy) .ss-frame-legend .spread-box::before {
+  fill: var(--week-bar);
+  stroke: var(--week-bar-current);
+  background: var(--week-bar);
+  box-shadow: inset 0 0 0 1px var(--week-bar-current);
+}
+
+.ss-chart:is(.tone-dry, .tone-wet, .tone-rainy) .ss-spread-outer,
+.ss-chart:is(.tone-dry, .tone-wet, .tone-rainy) .ss-frame-legend .spread-outer::before {
+  fill: var(--week-bar-past);
+  stroke: var(--week-bar-current);
+  background: var(--week-bar-past);
+  box-shadow: inset 0 0 0 1px var(--week-bar-current);
+}
+
+
+/* A spell's chance across the ensemble, coloured by how likely it is. */
+.ss-spell-chance.high {
+  background: rgba(47, 63, 208, 0.14);
+  color: #2433b5;
+}
+
+.ss-spell-chance.mid {
+  background: rgba(239, 188, 38, 0.2);
+  color: #7a5200;
+}
+
+.ss-spell-chance.low {
+  background: rgba(59, 70, 82, 0.1);
+  color: #46525f;
+}

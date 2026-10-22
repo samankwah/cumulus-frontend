@@ -33,8 +33,8 @@ const ForecastRasterMap = dynamic(
   { ssr: false },
 );
 
-/** Close to opaque so the map matches the legend; place labels are drawn above the raster. */
-const SUBSEASONAL_TILE_OPACITY = 0.85;
+/** Opaque, so the map shows exactly the legend's colours; borders and place labels are drawn above it. */
+const SUBSEASONAL_TILE_OPACITY = 1;
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);

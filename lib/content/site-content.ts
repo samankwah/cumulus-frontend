@@ -60,7 +60,8 @@ export const DEFAULT_SITE_TEXT: SiteText = {
   dataInfo: {
     demoNote: "Demo data: a made-up ensemble for testing the views. Not a forecast.",
     gridNote: "about 11 km",
-    observedRainfall: "None. Every value is forecast. Days shaded “Elapsed” are earlier days of this forecast, not observations.",
+    observedRainfall:
+      "IMERG late run (NASA GPM): satellite daily totals at 0.25°, matched to the forecast grid. Once a day has been observed (about two days later) it replaces the forecast in every member, so its chances read 0 or 100%; elapsed days still waiting for observations are hatched.",
   },
   about: {
     body: "",

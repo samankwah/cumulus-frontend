@@ -727,6 +727,55 @@
   background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(255, 255, 255, 0.5) 3px 5px);
 }
 
+/* Observed days in the timeline: the charts' observed ink, so the dock shows where history ends. */
+.ss-bar.observed {
+  background: rgba(52, 71, 91, 0.42);
+}
+
+.ss-bar.observed.past {
+  background: rgba(52, 71, 91, 0.62);
+}
+
+.ss-bar.observed.current {
+  background: var(--accent-teal);
+}
+
+/* "Observed" tag in the dock readout and stat line. */
+.ss-observed-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 6px 0 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(52, 71, 91, 0.12);
+  color: var(--ss-observed);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.ss-dock-stat.observed .ss-observed-chip {
+  margin-left: 0;
+}
+
+.ss-timeline-readout .ss-observed-chip {
+  display: inline-flex;
+  color: var(--ss-observed);
+  font-size: 0.64rem;
+  font-weight: 800;
+  vertical-align: 3px;
+}
+
+.ss-timeline-readout > span {
+  white-space: nowrap;
+}
+
+.ss-dock-stat.observed .ss-run-demo {
+  font-style: normal;
+}
+
 .ss-today {
   position: absolute;
   top: 2px;
@@ -976,6 +1025,119 @@
   fill: rgba(118, 134, 151, 0.14);
 }
 
+/* Observed (elapsed) days: what actually fell, in one dark "ink" that reads apart from the
+   forecast's teal boxes and blue bars. Their band is a faint tint of the same ink. */
+:root {
+  --ss-observed: #34475b;
+  --ss-observed-soft: #a9b6c3;
+}
+
+.ss-frame-observed rect {
+  fill: rgba(52, 71, 91, 0.07);
+}
+
+.ss-frame-observed-label {
+  fill: var(--ss-observed);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Hatching: elapsed days still awaiting observations, and days a chance cannot be judged yet. */
+.ss-hatch-ground {
+  fill: rgba(118, 134, 151, 0.08);
+}
+
+.ss-hatch-line {
+  stroke: rgba(118, 134, 151, 0.32);
+  stroke-width: 2;
+}
+
+.ss-observed-bar {
+  fill: var(--ss-observed-soft);
+  shape-rendering: crispEdges;
+}
+
+.ss-observed-bar.wet {
+  fill: var(--ss-observed);
+}
+
+.ss-observed-bar.hover,
+.ss-observed-bar.current {
+  fill: #172634;
+}
+
+.ss-observed-bar.current {
+  stroke: #ffffff;
+  stroke-width: 1;
+}
+
+/* An observed day's chance is 0 or 100: drawn as plain fact in the observed ink, not a colour class. */
+.ss-chance-bar.observed {
+  fill: var(--ss-observed);
+  opacity: 0.55;
+}
+
+.ss-chance-bar.observed.hover,
+.ss-chance-bar.observed.current {
+  opacity: 0.85;
+  filter: none;
+}
+
+.ss-week.observed .ss-observed-bar {
+  fill: var(--ss-observed);
+}
+
+.ss-week.observed.current .ss-observed-bar {
+  fill: #172634;
+}
+
+/* Spells: the chance of being in one, as a line over the "starts that day" bars. */
+.tone-dry {
+  --spell-line: #a8471a;
+}
+
+.tone-wet {
+  --spell-line: #176b67;
+}
+
+.tone-extreme {
+  --spell-line: #9b1c1c;
+}
+
+.ss-chance-line {
+  fill: none;
+  stroke: var(--spell-line, #2b3440);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.ss-chance-line-dot {
+  fill: #ffffff;
+  stroke: var(--spell-line, #2b3440);
+  stroke-width: 2.2;
+  pointer-events: none;
+}
+
+.ss-frame-legend .observed::before {
+  background: var(--ss-observed);
+}
+
+.ss-frame-legend .awaiting::before,
+.ss-frame-legend .unjudged::before {
+  background: repeating-linear-gradient(45deg, rgba(118, 134, 151, 0.36) 0 2px, rgba(118, 134, 151, 0.08) 2px 5px);
+}
+
+.ss-frame-legend .spell-line::before {
+  height: 0;
+  vertical-align: middle;
+  border-top: 2.2px solid var(--spell-line, #2b3440);
+  border-radius: 2px;
+}
+
 .ss-frame-past-label {
   fill: #5d6b78;
   font-size: 11.5px;
@@ -1191,32 +1353,6 @@
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
-}
-
-/* "By this date" chances: a filled step line in the layer's colour. */
-.ss-cumulative-area {
-  fill: var(--chance-color, var(--ss-rain));
-  opacity: 0.16;
-}
-
-.ss-cumulative-line {
-  fill: none;
-  stroke: var(--chance-color, var(--ss-rain));
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-
-.ss-cumulative-dot {
-  fill: #ffffff;
-  stroke: var(--chance-color, var(--ss-rain));
-  stroke-width: 2;
-  pointer-events: none;
-}
-
-.ss-frame-legend .chance-line::before {
-  height: 0;
-  vertical-align: middle;
-  border-top: 2px solid var(--chance-color, var(--ss-rain));
 }
 
 .tone-rainy {
@@ -1535,6 +1671,37 @@
   box-shadow: inset 0 0 0 2px #c0392b;
 }
 
+/* Observed days keep their wet/dry colours (they happened) and carry a small ink dot; flat, as
+   they can no longer change. */
+.ss-calendar-day.observed {
+  position: relative;
+  box-shadow: none;
+}
+
+.ss-calendar-day.observed::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ss-observed);
+  opacity: 0.75;
+}
+
+.ss-calendar-day.observed.current {
+  box-shadow: var(--neo-inset);
+}
+
+.ss-frame-legend .cal-observed::before {
+  width: 6px;
+  height: 6px;
+  margin-inline: 3px 9px;
+  border-radius: 50%;
+  background: var(--ss-observed);
+}
+
 @media (max-width: 520px) {
   .ss-calendar-weekdays,
   .ss-calendar-grid {
@@ -1754,6 +1921,15 @@
 .ss-spell-status.past {
   background: rgba(118, 134, 151, 0.16);
   color: #5d6b78;
+}
+
+.ss-spell.observed {
+  opacity: 0.8;
+}
+
+.ss-spell-status.observed {
+  background: rgba(52, 71, 91, 0.12);
+  color: var(--ss-observed);
 }
 
 .ss-spell.dry .ss-spell-status.now,
@@ -3417,6 +3593,123 @@
   font-weight: 600;
 }
 
+/* Model row: forecast model x downscaling -------------------------------------
+   Two raised fields in one sunken track, like the segmented rows around it; each names what it
+   chooses in a small caption over the value, and opens the panel's pill menu. */
+.ss-model-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 5px;
+  border-radius: 22px;
+  background: var(--map-panel-surface-soft);
+  box-shadow: var(--neo-inset-soft);
+}
+
+.ss-model-field {
+  display: block;
+  min-width: 0;
+}
+
+.ss-model-field .ss-pill-trigger {
+  justify-content: space-between;
+  width: 100%;
+  min-height: 46px;
+  padding: 6px 10px 6px 14px;
+  border-radius: 17px;
+  background: var(--map-panel-surface-strong);
+  box-shadow: var(--neo-raised-tight);
+  color: var(--ink);
+  text-align: left;
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.ss-model-field .ss-pill-trigger:hover {
+  background: var(--map-panel-surface);
+}
+
+.ss-model-field .ss-pill-trigger:focus-visible {
+  border-radius: 17px;
+  outline-offset: 2px;
+}
+
+.ss-model-field .ss-pill-chevron {
+  flex: none;
+  color: var(--muted);
+}
+
+.ss-model-field-body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ss-model-field-body small {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.ss-model-field-body strong {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ss-model-members {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.ss-model-field-body .ss-run-demo {
+  align-self: center;
+  margin-left: 0;
+  font-style: normal;
+}
+
+/* The menus are wider than either field; the right-hand one opens leftwards from its edge. */
+.ss-model-field .ss-pill-list {
+  min-width: 292px;
+}
+
+/* Desktop panel: label beside the track, like Outlook, Period and Geography. */
+.view-subseasonal .control-card .ss-model-group .control-field {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+/* Phone options: each choice is its own row, the value alone in a pill. */
+.ss-model-inline {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.ss-model-inline .ss-model-field {
+  max-width: 100%;
+}
+
+.ss-model-inline .ss-model-field .ss-pill-trigger {
+  width: auto;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 0 10px 0 14px;
+  border-radius: 999px;
+}
+
 /* Synthetic demo runs: marked wherever the run is named, so they are never read as a forecast. */
 .ss-run-demo {
   margin-left: 6px;
@@ -3598,4 +3891,243 @@
   .ss-pill-list {
     animation: none;
   }
+}
+
+/* Ensemble day counts (dry spells, wet spells, rain days): box plots in the layer's own colour. */
+.ss-chart:is(.tone-dry, .tone-wet, .tone-rainy) .ss-spread-box,
+.ss-chart:is(.tone-dry, .tone-wet, .tone-rainy) .ss-frame-legend .spread-box::before {
+  fill: var(--week-bar);
+  stroke: var(--week-bar-current);
+  background: var(--week-bar);
+  box-shadow: inset 0 0 0 1px var(--week-bar-current);
+}
+
+.ss-chart:is(.tone-dry, .tone-wet, .tone-rainy) .ss-spread-outer,
+.ss-chart:is(.tone-dry, .tone-wet, .tone-rainy) .ss-frame-legend .spread-outer::before {
+  fill: var(--week-bar-past);
+  stroke: var(--week-bar-current);
+  background: var(--week-bar-past);
+  box-shadow: inset 0 0 0 1px var(--week-bar-current);
+}
+
+
+/* A spell's chance across the ensemble, coloured by how likely it is. */
+.ss-spell-chance.high {
+  background: rgba(47, 63, 208, 0.14);
+  color: #2433b5;
+}
+
+.ss-spell-chance.mid {
+  background: rgba(239, 188, 38, 0.2);
+  color: #7a5200;
+}
+
+.ss-spell-chance.low {
+  background: rgba(59, 70, 82, 0.1);
+  color: #46525f;
+}
+
+/* Spell length ("at least N days in a row") ---------------------------------------------
+   A sunken track like the segmented rows, filled in the layer's colour up to the chosen length,
+   a tick per day with GMet's standard length marked, steppers either side and the value. */
+.segmented.ss-segmented-double {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ss-length-slider {
+  --spell-tone: var(--ss-dry);
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 50px;
+  padding: 5px 10px 5px 5px;
+  border-radius: 999px;
+  background: var(--map-panel-surface-soft);
+  box-shadow: var(--neo-inset-soft);
+}
+
+.ss-length-slider.tone-wet {
+  --spell-tone: var(--ss-wet);
+}
+
+.ss-length-step {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--map-panel-surface-strong);
+  box-shadow: var(--neo-raised-tight);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ss-length-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ss-length-step svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.ss-length-step:focus-visible {
+  outline: 3px solid rgba(35, 209, 173, 0.5);
+  outline-offset: 2px;
+}
+
+.ss-length-track {
+  position: relative;
+  height: 30px;
+  margin: 0 8px;
+}
+
+.ss-length-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ss-length-ticks span {
+  position: absolute;
+  bottom: 2px;
+  width: 2px;
+  height: 6px;
+  border-radius: 1px;
+  background: rgba(93, 107, 120, 0.35);
+  transform: translateX(-50%);
+}
+
+.ss-length-ticks span.on {
+  background: var(--spell-tone);
+  opacity: 0.6;
+}
+
+/* GMet's standard length: a taller, darker tick. */
+.ss-length-ticks span.official {
+  height: 10px;
+  background: var(--ink);
+  opacity: 0.7;
+}
+
+.ss-length-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.ss-length-track input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--spell-tone) var(--fill, 0%), rgba(118, 134, 151, 0.22) var(--fill, 0%));
+}
+
+.ss-length-track input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--spell-tone) var(--fill, 0%), rgba(118, 134, 151, 0.22) var(--fill, 0%));
+}
+
+.ss-length-track input[type="range"]::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: var(--spell-tone);
+  box-shadow: 0 1px 4px rgba(24, 33, 43, 0.3);
+  -webkit-appearance: none;
+}
+
+.ss-length-track input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: var(--spell-tone);
+  box-shadow: 0 1px 4px rgba(24, 33, 43, 0.3);
+}
+
+.ss-length-track input[type="range"]:focus-visible {
+  outline: none;
+}
+
+.ss-length-track input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(35, 209, 173, 0.45);
+}
+
+.ss-length-value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 54px;
+  justify-content: flex-end;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ss-length-value strong {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.ss-length-value small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.ss-spell-official {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* Desktop panel: label beside the slider, like the rows around it. */
+.view-subseasonal .control-card .ss-spell-group .control-field {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.view-subseasonal .control-card .ss-spell-group {
+  gap: 20px;
+}
+
+.view-subseasonal .control-card .ss-spell-group .ss-stat-note {
+  margin-top: -12px;
+  padding-left: 120px;
+}
+
+/* Drawer and phone: the slider takes the row; the toggle sits under it. */
+.ss-spell-compact .ss-stat-compact-row {
+  display: grid;
+  gap: 8px;
+}
+
+.ss-spell-compact .ss-length-slider {
+  min-height: 44px;
+}
+
+
+/* The map's resolution, quietly under the legend. */
+.ss-dock-resolution {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
 }

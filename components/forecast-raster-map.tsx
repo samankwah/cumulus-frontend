@@ -1057,24 +1057,29 @@ function ForecastMapOverlay({
           />
         </>
       )}
-      {selectedFeatures ? (
-        <>
-          <GeoJSON
-            key={`forecast-selection-casing-${dashboardMode}-${selectedKey}`}
-            data={selectedFeatures}
-            interactive={false}
-            pathOptions={NO_PATH_OPTIONS}
-            style={getSelectionCasingStyle}
-          />
-          <GeoJSON
-            key={`forecast-selection-line-${dashboardMode}-${selectedKey}`}
-            data={selectedFeatures}
-            interactive={false}
-            pathOptions={NO_PATH_OPTIONS}
-            style={getSelectionLineStyle}
-          />
-        </>
-      ) : null}
+      {/* The selected shape's outline sits in its own pane above every border (country outlines 440,
+          Ghana's outline 480), so a selection on the national border keeps its colour all round.
+          A child of the map pane, not of this one, so its z-index competes with the other panes. */}
+      <Pane name="forecast-selection-outline-pane" pane="mapPane" style={{ zIndex: 490, pointerEvents: "none" }}>
+        {selectedFeatures ? (
+          <>
+            <GeoJSON
+              key={`forecast-selection-casing-${dashboardMode}-${selectedKey}`}
+              data={selectedFeatures}
+              interactive={false}
+              pathOptions={NO_PATH_OPTIONS}
+              style={getSelectionCasingStyle}
+            />
+            <GeoJSON
+              key={`forecast-selection-line-${dashboardMode}-${selectedKey}`}
+              data={selectedFeatures}
+              interactive={false}
+              pathOptions={NO_PATH_OPTIONS}
+              style={getSelectionLineStyle}
+            />
+          </>
+        ) : null}
+      </Pane>
     </>
   );
 }

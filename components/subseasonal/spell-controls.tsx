@@ -43,7 +43,8 @@ export function SpellControls({ state, variant }: { state: SubseasonalState; var
     }
   };
   const ticks = Array.from({ length: high - low + 1 }, (_, position) => low + position);
-  const at = (value: number) => `${((value - low) / Math.max(high - low, 1)) * 100}%`;
+  const fraction = (value: number) => (value - low) / Math.max(high - low, 1);
+  const at = (value: number) => `${fraction(value) * 100}%`;
 
   const slider = (
     <div className={`ss-length-slider tone-${kind}`} data-testid={`${idPrefix}-spell-length`}>
@@ -79,7 +80,8 @@ export function SpellControls({ state, variant }: { state: SubseasonalState; var
           aria-label={`${kind === "dry" ? "Dry" : "Wet"} spell length, days in a row`}
           aria-valuetext={`At least ${draft} days`}
           data-testid={`${idPrefix}-spell-slider`}
-          style={{ ["--fill" as string]: at(draft) }}
+          // The thumb's centre runs from half a thumb in at each end, as the ticks do.
+          style={{ ["--fill" as string]: `calc(var(--thumb) / 2 + (100% - var(--thumb)) * ${fraction(draft)})` }}
           onChange={(event) => commit(Number(event.target.value))}
           onPointerUp={(event) => commit(Number((event.target as HTMLInputElement).value), true)}
           onKeyUp={(event) => commit(Number((event.target as HTMLInputElement).value), true)}

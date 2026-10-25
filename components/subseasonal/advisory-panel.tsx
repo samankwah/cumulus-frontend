@@ -26,6 +26,7 @@ function ToneIcon({ tone }: { tone: SubseasonalAdvisory["tone"] }) {
  */
 function CropPicker({ crop, onChange }: { crop: CropKey; onChange: (crop: CropKey) => void }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [opensUp, setOpensUp] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -67,7 +68,18 @@ function CropPicker({ crop, onChange }: { crop: CropKey; onChange: (crop: CropKe
         aria-expanded={isOpen}
         aria-controls={isOpen ? menuId : undefined}
         aria-label={`${pickerLabel}: ${label}`}
-        onClick={() => setIsOpen((open) => !open)}
+        onClick={() => {
+          if (!isOpen) {
+            // Open upwards when the menu would run past the bottom of the drawer (or the window).
+            const button = buttonRef.current?.getBoundingClientRect();
+            const scroller = buttonRef.current?.closest(".drawer-scroll")?.getBoundingClientRect();
+            const bottom = Math.min(scroller?.bottom ?? window.innerHeight, window.innerHeight);
+            const top = Math.max(scroller?.top ?? 0, 0);
+            const height = content.crops.length * 42 + 20;
+            setOpensUp(Boolean(button && bottom - button.bottom < height && button.top - top > bottom - button.bottom));
+          }
+          setIsOpen((open) => !open);
+        }}
       >
         {label}
         <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
@@ -75,7 +87,7 @@ function CropPicker({ crop, onChange }: { crop: CropKey; onChange: (crop: CropKe
         </svg>
       </button>
       {isOpen ? (
-        <div className="control-select-menu ss-crop-menu" id={menuId} role="listbox" aria-label={pickerLabel}>
+        <div className={`control-select-menu ss-crop-menu${opensUp ? " up" : ""}`} id={menuId} role="listbox" aria-label={pickerLabel}>
           {content.crops.map(({ key, label: option }) => (
             <button
               key={key}

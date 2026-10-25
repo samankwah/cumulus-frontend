@@ -3986,14 +3986,16 @@
 }
 
 .ss-length-track {
+  --thumb: 20px;
   position: relative;
   height: 30px;
   margin: 0 8px;
 }
 
+/* Inset by half a thumb: the range thumb's centre never reaches the track's ends. */
 .ss-length-ticks {
   position: absolute;
-  inset: 0;
+  inset: 0 calc(var(--thumb) / 2);
   pointer-events: none;
 }
 
@@ -4043,8 +4045,9 @@
 }
 
 .ss-length-track input[type="range"]::-webkit-slider-thumb {
-  width: 20px;
-  height: 20px;
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
   margin-top: -7px;
   border: 3px solid #ffffff;
   border-radius: 50%;
@@ -4054,8 +4057,9 @@
 }
 
 .ss-length-track input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
   border: 3px solid #ffffff;
   border-radius: 50%;
   background: var(--spell-tone);
@@ -4123,11 +4127,3 @@
   min-height: 44px;
 }
 
-
-/* The map's resolution, quietly under the legend. */
-.ss-dock-resolution {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 600;
-}

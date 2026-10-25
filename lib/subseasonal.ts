@@ -265,18 +265,6 @@ export function isInterpolatedRun(run: Pick<SubseasonalRun, "downscaling_label" 
   return run.downscaling_label === "Bilinear" || Boolean(run.provenance?.model_type?.includes("bilinear"));
 }
 
-/**
- * The map's resolution in words: "0.1° grid (~11 km)", noting when a Bilinear run's real detail is
- * coarser, and when the shown day is observed rain regridded from IMERG's 0.25°.
- */
-export function resolutionText(run: Pick<SubseasonalRun, "grid_resolution_degrees" | "downscaling_label" | "provenance">, observed = false) {
-  const degrees = run.grid_resolution_degrees ?? 0.1;
-  const parts = [`${degrees}° grid (~${Math.round(degrees * 111)} km)`];
-  if (observed) parts.push("observed at 0.25°, regridded");
-  else if (isInterpolatedRun(run)) parts.push("interpolated from the model's own coarser grid");
-  return parts.join(" · ");
-}
-
 /** The run's model in full, "Aurora · IMERG head · UNet", or its short label on older backends. */
 export function runModelName(run: Pick<SubseasonalRun, "model_label" | "family_label" | "downscaling_label">) {
   return run.family_label && run.downscaling_label ? `${run.family_label} · ${run.downscaling_label}` : run.model_label;

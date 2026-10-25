@@ -11,7 +11,6 @@ import {
   LAYER_FALLBACK_LABELS,
   LAYER_SHORT_LABELS,
   modelGrid,
-  resolutionText,
 } from "@/lib/subseasonal";
 import type { ModelAxisOption, SubseasonalAreaLevel, SubseasonalLayerKey } from "@/lib/subseasonal";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
@@ -687,9 +686,6 @@ function DockBody({ state }: { state: SubseasonalState }) {
         </p>
       ) : null}
       <SteppedLegend layer={layer} />
-      <p className="ss-dock-resolution" data-testid="ss-dock-resolution">
-        {resolutionText(run, Boolean(layer.observed))}
-      </p>
       {state.layerError ? (
         <p className="control-inline-note" role="status">
           {state.layerError}{" "}

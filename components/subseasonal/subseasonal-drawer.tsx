@@ -1198,6 +1198,14 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
   const currentDay = state.aggregation === "daily" ? state.index : null;
   const { advisory: advisoryContent } = useSiteContent();
   const [crop, setCrop] = useCropPreference(advisoryContent);
+  // On the narrowest phones the tab row scrolls: keep the chosen layer's tab in view.
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const tabs = tabsRef.current;
+    const tab = tabs?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!tabs || !tab || tabs.scrollWidth <= tabs.clientWidth) return;
+    tabs.scrollTo({ left: tab.offsetLeft - (tabs.clientWidth - tab.offsetWidth) / 2 });
+  }, [layer, state.isDrawerOpen]);
   const advisory = useMemo(
     () => (series ? buildSubseasonalAdvisory(layer, series, crop, undefined, advisoryContent) : null),
     [advisoryContent, crop, layer, series],
@@ -1292,7 +1300,7 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
         </button>
       </div>
 
-      <div className="ss-drawer-tabs" role="group" aria-label="Map layer">
+      <div className="ss-drawer-tabs" role="group" aria-label="Map layer" ref={tabsRef}>
         {availableLayers(run).map((key) => (
           <button
             key={key}

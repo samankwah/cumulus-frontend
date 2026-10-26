@@ -580,42 +580,6 @@ function MobileControls({ state, geography }: { state: SubseasonalState; geograp
   );
 }
 
-/** Phones only: what the desktop panel header carries, the outlook switch and how fresh the run is. */
-export function SubseasonalTopBar({ state, onSeasonal }: { state: SubseasonalState; onSeasonal?: () => void }) {
-  const run = state.run;
-  return (
-    <header className="ss-topbar" data-testid="ss-topbar">
-      {onSeasonal ? (
-        <div className="ss-mini-segmented ss-topbar-outlook" role="radiogroup" aria-label="Forecast outlook">
-          <button type="button" role="radio" aria-checked="true">
-            46 days
-          </button>
-          <button type="button" role="radio" aria-checked="false" data-testid="ss-topbar-seasonal" onClick={onSeasonal}>
-            Seasonal
-          </button>
-        </div>
-      ) : (
-        <span className="ss-topbar-title">46-Day Forecast</span>
-      )}
-      {run && state.activeRunId && run.run_id !== state.activeRunId ? (
-        <span className="ss-topbar-run" data-testid="ss-topbar-run" title={`${run.model_label} run initialised ${formatInitTime(run.init_time)}`}>
-          <span className="ss-topbar-model">Issued </span>
-          {formatInitTime(run.init_time).split(" ").slice(0, 2).join(" ")}
-        </span>
-      ) : run ? (
-        <span
-          className={run.is_stale ? "ss-topbar-run stale" : "ss-topbar-run"}
-          data-testid="ss-topbar-run"
-          title={`${run.model_label} run initialised ${formatInitTime(run.init_time)}`}
-        >
-          <span className="ss-topbar-model">{run.model_label} · </span>
-          {run.is_stale ? `${run.age_days} days old` : formatInitTime(run.init_time)}
-        </span>
-      ) : null}
-    </header>
-  );
-}
-
 export function SubseasonalDock({ state, geography }: { state: SubseasonalState; geography: Geography }) {
   return (
     <>

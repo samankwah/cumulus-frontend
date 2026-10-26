@@ -2368,3 +2368,90 @@ button {
 .announcement button:hover {
   background: var(--panel-soft);
 }
+
+/* ---------- Logo over the map ---------- */
+/* Top-left, above the control panel: the GMet crest, "CUMULUS" and "Delivered by GMet". */
+:root {
+  --map-brand-h: 56px;
+}
+
+.map-brand {
+  position: absolute;
+  top: clamp(16px, 1.8vw, 24px);
+  left: clamp(16px, 1.8vw, 24px);
+  z-index: 760;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border-radius: 14px;
+  color: var(--ink);
+  text-decoration: none;
+  pointer-events: auto;
+}
+
+.map-brand:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: 4px;
+}
+
+.map-brand-mark {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(24, 33, 43, 0.18));
+}
+
+/* A soft white halo keeps the name readable over map labels and lines. */
+.map-brand-text {
+  display: grid;
+  gap: 1px;
+  line-height: 1.1;
+  text-shadow:
+    0 0 3px rgba(255, 255, 255, 0.95),
+    0 0 8px rgba(255, 255, 255, 0.85);
+}
+
+.map-brand-name {
+  color: var(--accent-strong);
+  font-family: var(--font-display);
+  font-size: 1.32rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.map-brand-by {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* The control panel starts below the logo. */
+@media (min-width: 861px) {
+  .floating-controls {
+    margin-top: var(--map-brand-h);
+  }
+}
+
+@media (max-width: 860px) {
+  .map-brand {
+    top: max(10px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    gap: 8px;
+  }
+
+  .map-brand-mark {
+    width: 36px;
+    height: 36px;
+  }
+
+  .map-brand-name {
+    font-size: 1.08rem;
+  }
+
+  .map-brand-by {
+    font-size: 0.7rem;
+  }
+}

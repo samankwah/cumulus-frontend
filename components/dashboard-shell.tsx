@@ -9,7 +9,8 @@ import type { DashboardView } from "@/components/floating-controls";
 import type { AreaSearchResult } from "@/components/area-search";
 import type { AreaHoverProvider, MapControlsHandle } from "@/components/forecast-raster-map";
 import { MapZoomControls } from "@/components/map-zoom-controls";
-import { RunBadge, SubseasonalDock, SubseasonalPanel, SubseasonalTopBar } from "@/components/subseasonal/subseasonal-panel";
+import { BrandLogo } from "@/components/brand-logo";
+import { RunBadge, SubseasonalDock, SubseasonalPanel } from "@/components/subseasonal/subseasonal-panel";
 import { SubseasonalDrawer } from "@/components/subseasonal/subseasonal-drawer";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
 import { useSubseasonal } from "@/hooks/use-subseasonal";
@@ -349,10 +350,8 @@ export function DashboardShell() {
           />
 
           <div className="chrome-layer">
+            <BrandLogo />
             <MapZoomControls controls={mapControls} onSearchSelect={handleAreaSearch} />
-            {isSubseasonal ? (
-              <SubseasonalTopBar state={subseasonal} onSeasonal={SEASONAL_ENABLED ? () => changeView("seasonal") : undefined} />
-            ) : null}
             <FloatingControls
               view={view}
               onViewChange={SEASONAL_ENABLED ? changeView : undefined}

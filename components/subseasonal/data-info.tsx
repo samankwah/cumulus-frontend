@@ -1,5 +1,6 @@
 "use client";
 
+import { MODELS_CREDIT, PARTNERS } from "@/lib/brand";
 import { useSiteContent } from "@/lib/content/content-context";
 import { formatDay, isInterpolatedRun } from "@/lib/subseasonal";
 import type { SubseasonalLayerKey, SubseasonalProvenance, SubseasonalRun } from "@/lib/subseasonal";
@@ -122,6 +123,19 @@ export function DataInfo({ run, layer }: { run: SubseasonalRun; layer: Subseason
           {about.contactPhone ? <a href={`tel:${about.contactPhone.replace(/\s+/g, "")}`}>{about.contactPhone}</a> : null}
         </p>
       ) : null}
+      <div className="ss-data-partners" data-testid="ss-data-partners">
+        <p className="ss-data-partners-title">{MODELS_CREDIT}</p>
+        <ul aria-label="Partners">
+          {PARTNERS.map((partner) => (
+            <li key={partner.name}>
+              <a className="partner-logo" href={partner.url} target="_blank" rel="noopener noreferrer" title={partner.name} data-testid="partner-logo">
+                {/* eslint-disable-next-line @next/next/no-img-element -- SVG and PNG logos, sized by CSS */}
+                <img src={partner.logo} alt={partner.name} loading="lazy" decoding="async" />
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
     </details>
   );
 }

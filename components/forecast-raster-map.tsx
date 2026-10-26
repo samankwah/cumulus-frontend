@@ -244,7 +244,7 @@ function CountryOutlines() {
 
 /**
  * Padding that keeps the map's subject clear of every floating panel: the left control column, the
- * phone top bar, the bottom dock and an open location drawer on the right. A panel slid off-screen
+ * bottom dock and an open location drawer on the right. A panel slid off-screen
  * (the control column hides on mid-size screens while the drawer is open) measures off the map and
  * so adds nothing.
  */
@@ -259,7 +259,7 @@ function getChromeAwarePadding(map: L.Map) {
   let hasLeftColumn = false;
   const panels = stage
     ? stage.querySelectorAll<HTMLElement>(
-        '.floating-controls .control-card, .floating-legend, .ss-topbar, [data-testid="dashboard-drawer"].open',
+        '.floating-controls .control-card, .floating-legend, [data-testid="dashboard-drawer"].open',
       )
     : [];
   panels.forEach((panel) => {

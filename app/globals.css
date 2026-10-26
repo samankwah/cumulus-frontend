@@ -2437,7 +2437,7 @@ button {
 
 @media (max-width: 860px) {
   .map-brand {
-    top: max(10px, env(safe-area-inset-top));
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
     left: max(12px, env(safe-area-inset-left));
     gap: 8px;
   }

@@ -1,0 +1,585 @@
+/* District bulletin: an A4 sheet on screen, and the same sheet without the toolbar when printed. */
+
+.bulletin-page {
+  --b-ink: #1e2a33;
+  --b-muted: #5b6874;
+  --b-line: #d5dde4;
+  --b-soft: #f3f6f9;
+  --b-accent: #2f61c5;
+  /* Advisory tones as on the map: high = a risk to act on, mid = watch, low = calm. */
+  --b-high: #bd554a;
+  --b-mid: #c99a12;
+  --b-low: #1fa88a;
+  --b-good: #1f7a5a;
+  min-height: 100dvh;
+  padding: 24px 16px 48px;
+  box-sizing: border-box;
+  color: var(--b-ink);
+}
+
+.bulletin-page *,
+.bulletin-page *::before,
+.bulletin-page *::after {
+  box-sizing: border-box;
+}
+
+.bulletin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 210mm;
+  margin: 0 auto 16px;
+}
+
+.bulletin-toolbar .bulletin-button.primary {
+  margin-left: auto;
+}
+
+.bulletin-crop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.bulletin-crop select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--b-line);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+}
+
+.bulletin-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--b-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--b-ink);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.bulletin-button.primary {
+  border-color: var(--b-accent);
+  background: var(--b-accent);
+  color: #fff;
+}
+
+.bulletin-button:focus-visible,
+.bulletin-crop select:focus-visible,
+.bulletin-region a:focus-visible {
+  outline: 2px solid var(--b-accent);
+  outline-offset: 2px;
+}
+
+.bulletin-sheet {
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 14mm 14mm 10mm;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(30, 42, 51, 0.12);
+}
+
+.bulletin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 3px solid var(--b-ink);
+}
+
+.bulletin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bulletin-brand img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.bulletin-brand strong {
+  display: block;
+  font-size: 1.2rem;
+  letter-spacing: 0.08em;
+}
+
+.bulletin-brand span,
+.bulletin-issue span {
+  display: block;
+  color: var(--b-muted);
+  font-size: 0.8rem;
+}
+
+.bulletin-issue {
+  text-align: right;
+}
+
+.bulletin-issue strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.bulletin-title {
+  margin: 14px 0 10px;
+}
+
+.bulletin-title h1,
+.bulletin-index h1 {
+  margin: 0;
+  font-size: 1.9rem;
+  line-height: 1.1;
+}
+
+.bulletin-title p {
+  margin: 4px 0 0;
+  color: var(--b-muted);
+  font-size: 0.9rem;
+}
+
+.bulletin-headline {
+  padding: 12px 14px;
+  border-left: 5px solid var(--b-mid);
+  background: var(--b-soft);
+  border-radius: 4px;
+  color: var(--b-ink);
+}
+
+.bulletin-headline.bulletin-tone-high {
+  border-left-color: var(--b-high);
+}
+
+.bulletin-headline.bulletin-tone-low {
+  border-left-color: var(--b-low);
+}
+
+.bulletin-headline h2 {
+  margin: 0 0 6px;
+  color: var(--b-ink);
+  font-size: 1.15rem;
+  line-height: 1.3;
+}
+
+.bulletin-headline p {
+  margin: 4px 0 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.bulletin-headline .bulletin-context {
+  color: var(--b-muted);
+  font-size: 0.8rem;
+}
+
+.bulletin-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.bulletin-figures > div {
+  padding: 10px;
+  border: 1px solid var(--b-line);
+  border-radius: 6px;
+}
+
+.bulletin-figures span,
+.bulletin-figures small {
+  display: block;
+  color: var(--b-muted);
+  font-size: 0.75rem;
+}
+
+.bulletin-figures strong {
+  display: block;
+  margin: 2px 0;
+  font-size: 1.15rem;
+}
+
+.bulletin-section {
+  margin-top: 14px;
+}
+
+.bulletin-section h2 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+
+.bulletin-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.bulletin-chart .grid {
+  stroke: var(--b-line);
+}
+
+.bulletin-chart .axis {
+  fill: var(--b-muted);
+  font-size: 11px;
+}
+
+.bulletin-chart .axis.small {
+  font-size: 10px;
+}
+
+.bulletin-chart .value {
+  fill: var(--b-ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bulletin-chart .bar {
+  fill: var(--b-accent);
+}
+
+.bulletin-chart .whisker line {
+  stroke: var(--b-ink);
+  stroke-width: 1.5;
+}
+
+.bulletin-chart .past {
+  opacity: 0.35;
+}
+
+.bulletin-note {
+  margin: 4px 0 8px;
+  color: var(--b-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.bulletin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.bulletin-table th,
+.bulletin-table td {
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--b-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.bulletin-table thead th {
+  color: var(--b-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.bulletin-table small {
+  display: block;
+  color: var(--b-muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.bulletin-table tr.past {
+  color: var(--b-muted);
+}
+
+.bulletin-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.bulletin-actions h3 {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+}
+
+.bulletin-actions ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bulletin-actions li {
+  display: grid;
+  grid-template-columns: 7.5em 1fr auto;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--b-line);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.bulletin-actions .when {
+  font-weight: 600;
+}
+
+.bulletin-actions .confidence {
+  align-self: start;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--b-soft);
+  color: var(--b-muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.bulletin-actions .confidence.likely {
+  color: var(--b-good);
+}
+
+.bulletin-footer {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--b-line);
+  color: var(--b-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.bulletin-footer p {
+  margin: 0 0 4px;
+}
+
+.bulletin-link {
+  color: var(--b-accent);
+  word-break: break-all;
+}
+
+.bulletin-partners {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bulletin-partners img {
+  display: block;
+  height: 26px;
+  width: auto;
+  max-width: 110px;
+  object-fit: contain;
+}
+
+/* Index of districts */
+.bulletin-index .bulletin-header {
+  margin-bottom: 16px;
+}
+
+.bulletin-lead {
+  max-width: 60ch;
+  color: var(--b-muted);
+  line-height: 1.5;
+}
+
+.bulletin-regions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 8px;
+}
+
+.bulletin-regions a {
+  padding: 4px 10px;
+  border: 1px solid var(--b-line);
+  border-radius: 999px;
+  color: var(--b-ink);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.bulletin-region h2 {
+  margin: 18px 0 6px;
+  font-size: 1.05rem;
+}
+
+.bulletin-region ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 2px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bulletin-region a {
+  display: block;
+  padding: 6px 0;
+  color: var(--b-accent);
+  text-decoration: none;
+}
+
+.bulletin-region a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .bulletin-page {
+    padding: 12px 0 32px;
+  }
+
+  .bulletin-toolbar {
+    padding: 0 16px;
+  }
+
+  .bulletin-toolbar .bulletin-button.primary {
+    margin-left: 0;
+  }
+
+  .bulletin-sheet {
+    padding: 18px 16px;
+    border-radius: 0;
+  }
+
+  .bulletin-header {
+    align-items: flex-start;
+  }
+
+  .bulletin-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bulletin-table {
+    font-size: 0.75rem;
+  }
+
+  .bulletin-table th,
+  .bulletin-table td {
+    padding: 5px 3px;
+  }
+
+  .bulletin-actions li {
+    grid-template-columns: 1fr auto;
+  }
+
+  .bulletin-actions .text {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@page {
+  size: A4;
+  margin: 10mm;
+}
+
+@media print {
+  html,
+  body {
+    height: auto;
+    background: #fff !important;
+  }
+
+  .bulletin-page {
+    padding: 0;
+  }
+
+  .bulletin-toolbar {
+    display: none;
+  }
+
+  .bulletin-sheet {
+    max-width: none;
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .bulletin-page {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Tighter, so a district fits on one A4 page. */
+  .bulletin-header {
+    padding-bottom: 6px;
+  }
+
+  .bulletin-title {
+    margin: 8px 0 6px;
+  }
+
+  .bulletin-title h1 {
+    font-size: 1.6rem;
+  }
+
+  .bulletin-headline {
+    padding: 8px 12px;
+  }
+
+  .bulletin-headline h2 {
+    font-size: 1.05rem;
+  }
+
+  .bulletin-headline p {
+    font-size: 0.85rem;
+  }
+
+  .bulletin-figures {
+    margin: 8px 0;
+  }
+
+  .bulletin-figures > div {
+    padding: 6px 8px;
+  }
+
+  .bulletin-figures strong {
+    font-size: 1rem;
+  }
+
+  .bulletin-section {
+    margin-top: 8px;
+  }
+
+  .bulletin-chart {
+    max-height: 42mm;
+  }
+
+  .bulletin-table {
+    font-size: 0.75rem;
+  }
+
+  .bulletin-table th,
+  .bulletin-table td {
+    padding: 3px 6px;
+  }
+
+  .bulletin-table th small {
+    display: inline;
+    margin-left: 6px;
+  }
+
+  .bulletin-actions li {
+    padding: 3px 0;
+    font-size: 0.8rem;
+  }
+
+  .bulletin-footer {
+    margin-top: 10px;
+    font-size: 0.68rem;
+  }
+
+  .bulletin-partners img {
+    height: 20px;
+  }
+
+  .bulletin-table tr,
+  .bulletin-actions li {
+    break-inside: avoid;
+  }
+}

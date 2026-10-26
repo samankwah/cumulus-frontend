@@ -20,6 +20,7 @@ const SECTIONS: { key: ContentKey; href: string; icon: IconName; about: string }
   { key: "regions", href: "/admin/regions", icon: "map", about: "Where the northern sector and transition zone begin." },
   { key: "labels", href: "/admin/labels", icon: "tag", about: "Group headings and confidence tags in the advisory." },
   { key: "site", href: "/admin/site", icon: "text", about: "Page title, heading, About, disclaimer and contact." },
+  { key: "forecast", href: "/admin/forecast", icon: "cloud", about: "The model GMet issues: district bulletins and the partner API." },
 ];
 
 function greeting() {

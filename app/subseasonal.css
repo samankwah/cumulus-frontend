@@ -2747,6 +2747,36 @@
   gap: 8px;
 }
 
+/* Link from a district's drawer to its printable bulletin. */
+.ss-bulletin-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-strong);
+  color: var(--accent-strong);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ss-bulletin-link small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.ss-bulletin-link:hover span {
+  text-decoration: underline;
+}
+
+.ss-bulletin-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Same 20px rhythm as the other panel rows; the explanation sits close under its control. */
 .control-group.ss-stat-group {
   display: grid;

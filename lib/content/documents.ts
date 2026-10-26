@@ -158,6 +158,10 @@ const labelsSchema = z.object({
   }),
 });
 
+const forecastSchema = z.object({
+  officialModel: z.string().trim().regex(/^[a-z0-9_]{0,60}$/, "Choose a model from the list"),
+});
+
 /** Placeholders any advisory message may use, besides the ones in its own default text. */
 export const SHARED_PLACEHOLDERS = ["crop", "cropLabel", "criticalStage", "harvestRisk", "dryPests", "wetDiseases", "stage"];
 
@@ -201,6 +205,7 @@ export const CONTENT_DOCUMENTS = {
   regions: { title: "Regions & sectors", schema: regionsSchema },
   messages: { title: "Advisory messages", schema: messagesSchema },
   labels: { title: "Advisory labels", schema: labelsSchema },
+  forecast: { title: "Official forecast", schema: forecastSchema },
 } as const;
 
 export type ContentKey = keyof typeof CONTENT_DOCUMENTS;
@@ -225,6 +230,7 @@ export function defaultDocument<K extends ContentKey>(key: K): ContentData<K> {
     regions: advisory.sectors,
     messages: {},
     labels: { groups: advisory.groups, confidence: advisory.confidence },
+    forecast: content.forecast,
   };
   return structuredClone(defaults[key]);
 }
@@ -257,6 +263,7 @@ export function buildSiteContent(documents: Partial<Record<string, unknown>>): S
   const regions = read("regions");
   const messages = read("messages");
   const labels = read("labels");
+  const forecast = read("forecast");
 
   const base = DEFAULT_ADVISORY_CONTENT;
   const advisory: AdvisoryContent = {
@@ -273,5 +280,6 @@ export function buildSiteContent(documents: Partial<Record<string, unknown>>): S
     site: site ?? DEFAULT_SITE_CONTENT.site,
     announcements: announcements ?? DEFAULT_SITE_CONTENT.announcements,
     advisory,
+    forecast: forecast ?? DEFAULT_SITE_CONTENT.forecast,
   };
 }

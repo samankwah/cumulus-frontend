@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { jsonError, readJson, withUser } from "@/lib/auth/api";
 import { defaultDocument, isContentKey } from "@/lib/content/documents";
-import { CONTENT_CACHE_TAG } from "@/lib/content/get-content";
+import { CONTENT_CACHE_TAG, FORECAST_CACHE_TAG } from "@/lib/content/get-content";
 import { getDocument, saveDocument } from "@/lib/content/store";
 
 type Params = { params: { key: string } };
@@ -38,6 +38,8 @@ export async function PUT(request: Request, { params }: Params) {
         : jsonError(422, "Some fields need fixing", { issues: result.issues });
     }
     revalidateTag(CONTENT_CACHE_TAG);
+    // A new official model changes every bulletin.
+    if (params.key === "forecast") revalidateTag(FORECAST_CACHE_TAG);
     return NextResponse.json({ document: result.document });
   });
 }

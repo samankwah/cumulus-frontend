@@ -9,6 +9,7 @@ import { SpellControls } from "@/components/subseasonal/spell-controls";
 import { StatControls } from "@/components/subseasonal/stat-controls";
 import { DailyChanceChart, RainChart, WeeklyChart, WeeklyRainChart, WeeklyWettestDayChart } from "@/components/subseasonal/rain-chart";
 import type { SubseasonalState } from "@/hooks/use-subseasonal";
+import { areaId } from "@/lib/area-id";
 import {
   availableLayers,
   downloadText,
@@ -1358,6 +1359,19 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
               period={advisoryPeriod}
               issued={run ? formatDay(run.init_time.slice(0, 10), "short") : undefined}
             />
+
+            {series.kind === "district" ? (
+              <a
+                className="ss-bulletin-link"
+                href={`/bulletin/${areaId(series.name, series.region)}?crop=${encodeURIComponent(crop)}`}
+                target="_blank"
+                rel="noopener"
+                data-testid="drawer-bulletin-link"
+              >
+                <span>District bulletin</span>
+                <small>GMet&apos;s official forecast, ready to print or save as PDF</small>
+              </a>
+            ) : null}
 
             {sections.details}
 

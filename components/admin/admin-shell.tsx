@@ -18,6 +18,7 @@ const NAV: { title: string; links: NavLink[] }[] = [
       { href: "/admin", label: "Overview", icon: "home" },
       { href: "/admin/announcements", label: "Announcements", icon: "megaphone" },
       { href: "/admin/site", label: "Site text", icon: "text" },
+      { href: "/admin/forecast", label: "Official forecast", icon: "cloud" },
     ],
   },
   {

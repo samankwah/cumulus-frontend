@@ -46,10 +46,17 @@ export type SiteText = {
   };
 };
 
+/** Forecast choices GMet makes in the admin. */
+export type ForecastSettings = {
+  /** The model GMet issues as official (bulletin and partner API); "" leaves the backend's default. */
+  officialModel: string;
+};
+
 export type SiteContent = {
   site: SiteText;
   announcements: Announcement[];
   advisory: AdvisoryContent;
+  forecast: ForecastSettings;
 };
 
 export const DEFAULT_SITE_TEXT: SiteText = {
@@ -75,6 +82,7 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
   site: DEFAULT_SITE_TEXT,
   announcements: [],
   advisory: DEFAULT_ADVISORY_CONTENT,
+  forecast: { officialModel: "" },
 };
 
 /** Announcements to show on a date: switched on and inside their date range. */

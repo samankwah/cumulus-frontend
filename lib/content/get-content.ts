@@ -8,6 +8,8 @@ import { contentDocuments } from "@/lib/db/schema";
 
 /** Admin saves revalidate this tag, so the public site picks up an edit within seconds. */
 export const CONTENT_CACHE_TAG = "content";
+/** Forecast data fetched on the server (the bulletin); a new run or official model revalidates it. */
+export const FORECAST_CACHE_TAG = "forecast";
 
 /** Past this the site stops waiting for the database and shows the built-in content. */
 const DATABASE_TIMEOUT_MS = 2500;

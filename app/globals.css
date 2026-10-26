@@ -2452,4 +2452,20 @@ button {
   .map-brand-by {
     font-size: 0.7rem;
   }
+
+  /* An open search field takes the whole top row, so the logo steps aside until it closes. */
+  .map-brand {
+    transition:
+      opacity 160ms ease,
+      visibility 160ms;
+  }
+
+  .chrome-layer:has(.area-search.open) .map-brand {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .area-search-panel {
+    width: calc(100vw - 74px);
+  }
 }

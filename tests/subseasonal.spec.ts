@@ -773,9 +773,10 @@ test("the chance view shows the amounts before their chance, like every panel", 
 
 test("the spell length slider changes the map, the drawer and the advice", async ({ page }) => {
   const { requests } = await mockSubseasonal(page, { indicatorPeriods: true, ensembleArea: true });
-  await page.goto("/?layer=dry_spell_days&agg=weekly&week=3&area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  await page.goto("/?layer=dry_spell_days&agg=total&area=region&name=Northern", { waitUntil: "domcontentloaded" });
   const value = page.getByTestId("ss-spell-value");
   await expect(value).toContainText("5+");
+  await expect(value).toContainText("days");
   // The official length is not written to the URL or sent.
   expect(page.url()).not.toContain("dsd=");
   await page.getByTestId("ss-spell-longer").click();
@@ -789,7 +790,7 @@ test("the spell length slider changes the map, the drawer and the advice", async
   await expect
     .poll(() => requests.some((url) => url.pathname === "/subseasonal/area" && url.searchParams.get("dry_spell_days") === "7"))
     .toBe(true);
-  // For a week the map shows the chance of such a spell; Days switches to the days inside spells.
+  // For the run the map shows the chance of such a spell; Days switches to the days inside spells.
   await page.getByTestId("ss-spell-stat-days").click();
   await expect(page).toHaveURL(/ss=days/);
   await expect
@@ -800,6 +801,16 @@ test("the spell length slider changes the map, the drawer and the advice", async
   await page.getByTestId("ss-spell-shorter").click();
   await expect(value).toContainText("5+");
   await expect(page).not.toHaveURL(/dsd=/);
+});
+
+test("for a week the spell length stays in days, with a note that it is counted per week", async ({ page }) => {
+  await mockSubseasonal(page, { indicatorPeriods: true, ensembleArea: true });
+  await page.goto("/?layer=dry_spell_days&agg=weekly&week=3&area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("ss-spell-value")).toContainText("5+");
+  await expect(page.getByTestId("ss-spell-value")).toContainText("days");
+  await expect(page.getByTestId("ss-spell-period-note")).toContainText("days in a row, shown for each week");
+  await page.getByTestId("ss-agg-daily").click();
+  await expect(page.getByTestId("ss-spell-period-note")).toHaveCount(0);
 });
 
 test("the whole-run extreme chart shows each day's chance with the chance of one by that date", async ({ page }) => {

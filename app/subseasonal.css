@@ -4141,3 +4141,14 @@
   min-height: 44px;
 }
 
+/* Under the spell slider in Weekly: the length is still days in a row. */
+.ss-spell-period-note {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.ss-spell-body {
+  min-width: 0;
+}

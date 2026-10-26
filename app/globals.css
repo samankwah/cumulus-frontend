@@ -55,7 +55,7 @@ body {
 
 /* Whatever shows behind the phone's status bar and Safari's floating bar is map grey, never white. */
 html {
-  background-color: #e2e8ee;
+  background-color: #efefef;
 }
 
 body {
@@ -66,7 +66,7 @@ body {
   color: var(--ink);
   background: linear-gradient(145deg, #f0f4f8 0%, var(--bg) 48%, #dde6ef 100%);
   /* After the shorthand, which would reset it: a solid colour for Safari to tint its bars from. */
-  background-color: #e2e8ee;
+  background-color: #efefef;
 }
 
 button,

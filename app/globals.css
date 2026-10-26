@@ -1916,12 +1916,10 @@ button {
     min-height: 100dvh;
   }
 
-  /* Edge to edge, like a native weather app: the map runs behind Safari's bars (the large viewport),
-     while the controls stay in the visible area (100dvh) so none sit under the address bar. */
+  /* Edge to edge, like a native weather app: the map runs behind the status bar. It stays absolute,
+     never fixed: iOS 26 Safari won't draw fixed content under the clock and paints a solid strip there. */
   .map-frame {
-    position: fixed;
-    inset: 0 0 auto 0;
-    height: 100lvh;
+    position: absolute;
   }
 
   .chrome-layer {

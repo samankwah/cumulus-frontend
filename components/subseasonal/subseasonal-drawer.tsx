@@ -862,7 +862,7 @@ function layerSections({
           judgeableUntil={series.days.length - minDays + 1}
           observedWords={{ yes: `In a ${kind} spell`, no: `No ${kind} spell` }}
           tone={kind}
-          note={`A ${kind} spell is ${minDays}+ days in a row ${kind === "dry" ? `under ${wetDay} mm` : `of ${wetDay} mm or more`}. Bars: the chance one begins that day; line: the chance the day is inside one, as on the map.`}
+          note={`A ${kind} spell is ${minDays}+ days in a row ${kind === "dry" ? `under ${wetDay} mm` : `of ${wetDay} mm or more`} (WMO/ETCCDI dry day: under ${wetDay} mm). Bars: the chance one begins that day; line: the chance the day is inside one, as on the map.`}
         />
       ) : (
         <DailyChanceChart

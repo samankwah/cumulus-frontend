@@ -106,6 +106,14 @@ export function SpellControls({ state, variant }: { state: SubseasonalState; var
     </div>
   );
 
+  // The length is always days in a row (WMO/ETCCDI); Weekly only reports it week by week.
+  const periodNote =
+    state.aggregation === "weekly" ? (
+      <p className="ss-spell-period-note" data-testid={`${idPrefix}-spell-period-note`}>
+        Spell length is days in a row, shown for each week.
+      </p>
+    ) : null;
+
   const statToggle =
     state.aggregation === "daily" ? null : (
       <div
@@ -140,6 +148,7 @@ export function SpellControls({ state, variant }: { state: SubseasonalState; var
           {slider}
           {statToggle}
         </div>
+        {periodNote}
       </div>
     );
   }
@@ -147,7 +156,10 @@ export function SpellControls({ state, variant }: { state: SubseasonalState; var
     <div className="control-group ss-stat-group ss-spell-group">
       <div className="control-field ss-spell-field">
         <span className="control-label">Spell</span>
-        {slider}
+        <div className="ss-spell-body">
+          {slider}
+          {periodNote}
+        </div>
       </div>
       {statToggle ? (
         <div className="control-field">

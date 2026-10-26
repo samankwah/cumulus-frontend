@@ -338,20 +338,6 @@
 
 /* Layer chooser ------------------------------------------------------------ */
 
-/* Phone top bar title when the outlook switch is off. */
-.ss-topbar-title {
-  display: inline-flex;
-  align-items: center;
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: 999px;
-  background: var(--map-panel-surface-strong);
-  box-shadow: var(--map-card-shadow);
-  color: var(--ink);
-  font-size: 0.98rem;
-  font-weight: 800;
-}
-
 /* Uneven grid: Onset and Rainfall wide on top, the other three below; every edge flush. */
 .ss-layer-grid {
   display: grid;
@@ -2161,7 +2147,7 @@
   }
 
   .view-subseasonal .floating-controls {
-    max-height: calc(100dvh - 2 * clamp(16px, 1.8vw, 24px));
+    max-height: calc(100dvh - var(--map-brand-h) - 2 * clamp(16px, 1.8vw, 24px));
     overflow-y: auto;
     border-radius: 34px;
   }
@@ -2807,6 +2793,60 @@
   line-height: 1.45;
 }
 
+/* The partners behind the forecast models, at the foot of "About this data". */
+.ss-data-partners {
+  margin: 16px 4px 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.ss-data-partners-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ss-data-partners ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.partner-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+/* A fixed height (not max-height): SVGs with only a viewBox have no size of their own. */
+.partner-logo img {
+  display: block;
+  width: auto;
+  height: 24px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+a.partner-logo:hover {
+  box-shadow: 0 0 0 1px var(--line), 0 2px 6px rgba(48, 63, 78, 0.12);
+}
+
+a.partner-logo:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: 2px;
+}
+
 @media (max-width: 480px) {
   .ss-data-list {
     grid-template-columns: minmax(0, 1fr);
@@ -2988,10 +3028,9 @@
 }
 
 /* Phone layout for the 46-day view ----------------------------------------- */
-/* The map leads: a slim top bar, and one bottom card with layer chips, timeline and legend.
+/* The map leads: one bottom card with layer chips, timeline and legend.
    Period and areas live behind the options button; the desktop side panel is not shown. */
 
-.ss-topbar,
 .ss-mobile-controls {
   display: none;
 }
@@ -3011,14 +3050,14 @@
     font-size: 0.8rem;
   }
 
-  /* The period ("46 days (25 Sep–9 Nov)") is already in the top bar and the options: no title here. */
+  /* The period ("46 days (25 Sep–9 Nov)") is already in the options: no title here. */
   .view-subseasonal .ss-dock-title {
     display: none;
   }
 
-  /* Phones: zoom buttons sit on the right, just under the top bar. */
+  /* Phones: zoom buttons in the top-right corner of the map. */
   .view-subseasonal .map-zoom {
-    top: calc(max(10px, env(safe-area-inset-top)) + 64px);
+    top: max(10px, env(safe-area-inset-top));
     right: max(10px, env(safe-area-inset-right));
   }
 
@@ -3054,57 +3093,6 @@
         padding-bottom: calc(env(safe-area-inset-bottom) + 60px);
       }
     }
-  }
-
-  .ss-topbar {
-    position: absolute;
-    top: max(10px, env(safe-area-inset-top));
-    right: max(10px, env(safe-area-inset-right));
-    left: max(10px, env(safe-area-inset-left));
-    z-index: 760;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 6px 12px 6px 6px;
-    border: 1px solid var(--map-panel-border);
-    border-radius: 18px;
-    background: var(--map-panel-surface);
-    box-shadow: var(--map-panel-shadow);
-    pointer-events: auto;
-  }
-
-  .ss-topbar-outlook {
-    flex: 0 0 auto;
-  }
-
-  .ss-topbar-outlook button {
-    padding: 0 12px;
-  }
-
-  .ss-topbar-run {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--muted);
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .ss-topbar-run.stale {
-    color: #7a5605;
-  }
-
-  .ss-topbar-run.stale::before {
-    content: "";
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-right: 6px;
-    border-radius: 50%;
-    background: var(--accent-amber);
-    vertical-align: 1px;
   }
 
   /* Grid and flex children default to their content width; let them shrink to the phone. */
@@ -3312,13 +3300,6 @@
   }
 }
 
-/* On the narrowest phones the run's age matters more than the model name. */
-@media (max-width: 374px) {
-  .ss-topbar-model {
-    display: none;
-  }
-}
-
 @media (max-width: 860px) and (prefers-reduced-motion: reduce) {
   .ss-mobile-options {
     animation: none;
@@ -3368,7 +3349,7 @@
   }
 
   .view-subseasonal .floating-controls {
-    max-height: calc(100dvh - var(--ss-dock-clearance) - 3 * clamp(16px, 1.8vw, 24px));
+    max-height: calc(100dvh - var(--map-brand-h) - var(--ss-dock-clearance) - 3 * clamp(16px, 1.8vw, 24px));
   }
 }
 

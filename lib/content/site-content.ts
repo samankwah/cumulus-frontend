@@ -54,7 +54,7 @@ export type SiteContent = {
 
 export const DEFAULT_SITE_TEXT: SiteText = {
   title: "Cumulus · Ghana Forecast Map",
-  description: "Near-real-time Ghana seasonal agro-climate map powered by published Cumulus seasonal products.",
+  description: "Cumulus: Ghana's 46-day and seasonal rainfall forecasts and farm advice, by district.",
   brandName: "Cumulus",
   subseasonalHeading: "46-Day Forecast",
   dataInfo: {

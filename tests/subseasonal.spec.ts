@@ -603,9 +603,9 @@ test("on phones the 46-day map keeps one bottom card with layer chips and folded
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(await overflow()).toBeLessThanOrEqual(0);
 
-  // The desktop side panel is replaced by a top bar and chips.
+  // The desktop side panel is replaced by layer chips in the bottom card.
   await expect(page.getByTestId("ss-layer-rainfall")).toBeHidden();
-  await expect(page.getByTestId("ss-topbar-run")).toContainText("days old");
+  await expect(page.getByTestId("ss-topbar")).toHaveCount(0);
   await expect(page.getByTestId("ss-mlayer-rainfall")).toHaveAttribute("aria-checked", "true");
 
   await page.getByTestId("ss-mlayer-dry_spell_days").click();
@@ -618,9 +618,6 @@ test("on phones the 46-day map keeps one bottom card with layer chips and folded
   await page.getByTestId("ss-mgeo-district").click();
   await expect(page.getByTestId("ss-mgeo-district")).toHaveAttribute("aria-checked", "true");
   expect(await overflow()).toBeLessThanOrEqual(0);
-
-  await page.getByTestId("ss-topbar-seasonal").click();
-  await expect(page).toHaveURL(/view=seasonal/);
 });
 
 test("area search finds districts, regions and regional capitals and selects them", async ({ page }) => {
@@ -668,6 +665,26 @@ test("area search finds districts, regions and regional capitals and selects the
   await expect(page.getByTestId("area-search-input")).toHaveCount(0);
 });
 
+
+test("the logo over the map names Cumulus, delivered by GMet, and search sits with the zoom buttons", async ({ page }) => {
+  await mockSubseasonal(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const brand = page.getByTestId("map-brand");
+  await expect(brand).toContainText("Cumulus");
+  await expect(brand).toContainText("Delivered by GMet");
+  await expect(page.locator(".map-zoom").getByTestId("area-search-button")).toBeVisible();
+});
+
+test("About this data credits the Cumulus team and lists the partners", async ({ page }) => {
+  await mockSubseasonal(page);
+  await page.goto("/?area=region&name=Northern", { waitUntil: "domcontentloaded" });
+  const info = page.getByTestId("subseasonal-data-info");
+  await info.locator("summary").click();
+  const partners = info.getByTestId("ss-data-partners");
+  await expect(partners).toContainText("Forecast models by the Cumulus team");
+  await expect(partners.getByTestId("partner-logo")).toHaveCount(6);
+  await expect(partners.getByRole("img", { name: "Ghana Meteorological Agency" })).toBeVisible();
+});
 
 test("an ensemble's weekly spell days show box plots around the members' mean", async ({ page }) => {
   await mockSubseasonal(page, { ensembleArea: true, indicatorPeriods: true });

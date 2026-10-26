@@ -2468,4 +2468,17 @@ button {
   .area-search-panel {
     width: calc(100vw - 74px);
   }
+
+  /* The map fills the whole screen, under Safari's floating address bar too (the large viewport);
+     the controls and the area drawer end above the bar (the visible viewport). */
+  .spa-shell,
+  .atlas-stage {
+    height: 100lvh;
+    min-height: 100lvh;
+  }
+
+  .chrome-layer,
+  .drawer {
+    bottom: calc(100lvh - 100dvh);
+  }
 }

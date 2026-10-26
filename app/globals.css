@@ -55,7 +55,7 @@ body {
 
 /* Whatever shows behind the phone's status bar and Safari's floating bar is map grey, never white. */
 html {
-  background-color: #e2e8ee;
+  background-color: #efefef;
 }
 
 body {
@@ -66,7 +66,7 @@ body {
   color: var(--ink);
   background: linear-gradient(145deg, #f0f4f8 0%, var(--bg) 48%, #dde6ef 100%);
   /* After the shorthand, which would reset it: a solid colour for Safari to tint its bars from. */
-  background-color: #e2e8ee;
+  background-color: #efefef;
 }
 
 button,
@@ -1916,12 +1916,10 @@ button {
     min-height: 100dvh;
   }
 
-  /* Edge to edge, like a native weather app: the map runs behind Safari's bars (the large viewport),
-     while the controls stay in the visible area (100dvh) so none sit under the address bar. */
+  /* Edge to edge, like a native weather app: the map runs behind the status bar. It stays absolute,
+     never fixed: iOS 26 Safari won't draw fixed content under the clock and paints a solid strip there. */
   .map-frame {
-    position: fixed;
-    inset: 0 0 auto 0;
-    height: 100lvh;
+    position: absolute;
   }
 
   .chrome-layer {
@@ -2437,7 +2435,7 @@ button {
 
 @media (max-width: 860px) {
   .map-brand {
-    top: max(10px, env(safe-area-inset-top));
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
     left: max(12px, env(safe-area-inset-left));
     gap: 8px;
   }

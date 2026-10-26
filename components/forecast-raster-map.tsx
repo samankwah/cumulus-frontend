@@ -300,6 +300,11 @@ function getChromeAwarePadding(map: L.Map) {
   if (hasWideDock && top === MAP_PADDING_TOP_LEFT[0]) {
     top = 20;
   }
+  // Without a side panel (phones, tablets) the logo sits over the map itself: start the country below it.
+  const brand = stage?.querySelector<HTMLElement>(".map-brand")?.getBoundingClientRect();
+  if (brand?.height && !hasLeftColumn) {
+    top = Math.max(top, brand.bottom - mapRect.top + 8);
+  }
   // Phones (full-width dock, no side panel): let the country fill the width between small margins.
   if (hasWideDock && !hasLeftColumn) {
     left = PHONE_SIDE_PADDING;

@@ -2477,4 +2477,17 @@ button {
     height: 100lvh;
     min-height: 100lvh;
   }
+
+  /* iPhone Safari in a browser tab paints a solid strip behind the clock while the page sits at the
+     top. The page gets a runway above the app, a little taller than the status bar, and opens
+     scrolled past it (dashboard-shell adds the class and scrolls), so the map shows behind the clock. */
+  html.safari-runway {
+    --safari-runway: 64px;
+    overscroll-behavior: none;
+  }
+
+  html.safari-runway body {
+    min-height: calc(100lvh + var(--safari-runway));
+    padding-top: var(--safari-runway);
+  }
 }

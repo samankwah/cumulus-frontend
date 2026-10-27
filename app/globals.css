@@ -2469,16 +2469,12 @@ button {
     width: calc(100vw - 74px);
   }
 
-  /* The map fills the whole screen, under Safari's floating address bar too (the large viewport);
-     the controls and the area drawer end above the bar (the visible viewport). */
+  /* The map, dock and drawer run to the bottom of the screen, under Safari's floating address bar
+     (the large viewport). They are not lifted above the bar: the dock and drawer pad their content
+     clear of it, and a lift leaves a gap beneath them. */
   .spa-shell,
   .atlas-stage {
     height: 100lvh;
     min-height: 100lvh;
-  }
-
-  .chrome-layer,
-  .drawer {
-    bottom: calc(100lvh - 100dvh);
   }
 }

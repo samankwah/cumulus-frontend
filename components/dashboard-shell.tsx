@@ -59,6 +59,46 @@ export function DashboardShell() {
     setHasReadUrl(true);
   }, []);
 
+  // iOS 26 Safari paints a solid strip behind the clock while the page sits at the top. On iPhone
+  // Safari tabs the page gets a runway above the app (globals.css) and is kept scrolled past it, so
+  // the map shows behind the clock instead.
+  useEffect(() => {
+    const isPhoneSafariTab =
+      CSS.supports("-webkit-touch-callout", "none") &&
+      !window.matchMedia("(display-mode: standalone)").matches;
+    if (!isPhoneSafariTab) return;
+    const root = document.documentElement;
+    root.classList.add("safari-runway");
+    let touching = false;
+    const settle = () => {
+      const runway = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
+      if (!touching && runway > 0 && Math.abs(window.scrollY - runway) > 0.5) {
+        window.scrollTo(0, runway);
+      }
+    };
+    const onTouchStart = () => {
+      touching = true;
+    };
+    const onTouchEnd = () => {
+      touching = false;
+      window.setTimeout(settle, 0);
+    };
+    settle();
+    window.addEventListener("resize", settle);
+    window.addEventListener("scroll", settle, { passive: true });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      root.classList.remove("safari-runway");
+      window.removeEventListener("resize", settle);
+      window.removeEventListener("scroll", settle);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, []);
+
   const isSubseasonal = view === "subseasonal";
   const {
     dashboardMode,

@@ -117,6 +117,11 @@ button {
   background: linear-gradient(180deg, #edf3f7 0%, #dfe7ef 100%);
 }
 
+/* Esri light-grey base: its grey sea mapped to sky blue (filter in forecast-raster-map.tsx). */
+.esri-base-tiles {
+  filter: url(#esri-sea-sky);
+}
+
 .leaflet-interactive {
   cursor: pointer;
   transition:

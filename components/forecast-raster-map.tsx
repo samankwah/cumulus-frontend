@@ -82,6 +82,54 @@ const BORDER_MASK_DRIFT_DEGREES = 0.08;
  */
 const CUSTOM_BORDERS_MAX_ZOOM = 9;
 
+/**
+ * Esri's light-grey base paints sea and inland water a flat grey (sampled from its tiles) and land
+ * near-white. An SVG colour-table filter on the base tiles alone maps the sea grey to sky blue and
+ * keeps land exactly as it was; anti-aliased coast pixels blend between the two.
+ */
+const ESRI_SEA_RGB = [208, 207, 212] as const;
+const ESRI_LAND = 239;
+const SEA_SKY_RGB = [185, 220, 242] as const;
+const ESRI_SEA_FILTER_ID = "esri-sea-sky";
+
+function seaToSkyTable(sea: number, sky: number) {
+  const points: [number, number][] = [
+    [0, 0],
+    [sea, sky],
+    [ESRI_LAND, ESRI_LAND],
+    [255, 255],
+  ];
+  const values: string[] = [];
+  for (let v = 0; v <= 255; v += 1) {
+    const i = points.findIndex(([x], index) => index > 0 && v <= x);
+    const [x0, y0] = points[i - 1];
+    const [x1, y1] = points[i];
+    values.push(((y0 + ((v - x0) * (y1 - y0)) / (x1 - x0)) / 255).toFixed(4));
+  }
+  return values.join(" ");
+}
+
+/** How strongly the sky blue covers Esri's grey sea (1 = solid sky blue, 0 = original grey). */
+const SEA_SKY_OPACITY = 0.5;
+
+const SEA_TABLES = ESRI_SEA_RGB.map((sea, channel) =>
+  seaToSkyTable(sea, Math.round(sea + (SEA_SKY_RGB[channel] - sea) * SEA_SKY_OPACITY)),
+);
+
+function EsriSeaFilter() {
+  return (
+    <svg width="0" height="0" aria-hidden="true" focusable="false" style={{ position: "absolute" }}>
+      <filter id={ESRI_SEA_FILTER_ID} colorInterpolationFilters="sRGB">
+        <feComponentTransfer>
+          <feFuncR type="table" tableValues={SEA_TABLES[0]} />
+          <feFuncG type="table" tableValues={SEA_TABLES[1]} />
+          <feFuncB type="table" tableValues={SEA_TABLES[2]} />
+        </feComponentTransfer>
+      </filter>
+    </svg>
+  );
+}
+
 function useMapZoom() {
   const map = useMap();
   const [zoom, setZoom] = useState(() => map.getZoom());
@@ -1132,6 +1180,8 @@ export const ForecastRasterMap = memo(function ForecastRasterMap({
     [isProductReady, productIdentity, seasonProfile, subseason, thematicMode, viewMode],
   );
   return (
+    <>
+    <EsriSeaFilter />
     <MapContainer
       center={[7.9, -1.1]}
       zoom={6.3}
@@ -1149,6 +1199,7 @@ export const ForecastRasterMap = memo(function ForecastRasterMap({
         attribution="Basemap &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
         url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
         maxZoom={16}
+        className="esri-base-tiles"
       />
       <Pane name="basemap-labels-pane" style={{ zIndex: 450, pointerEvents: "none" }}>
         <TileLayer
@@ -1209,5 +1260,6 @@ export const ForecastRasterMap = memo(function ForecastRasterMap({
         ) : null}
       </Pane>
     </MapContainer>
+    </>
   );
 });

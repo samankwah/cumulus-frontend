@@ -36,6 +36,7 @@ import {
   observedDayCount,
 } from "@/lib/subseasonal";
 import type { SpellKind, SpellStat, SpellStatus, StatView, SubseasonalAggregation, SubseasonalLayerKey, SubseasonalSeries } from "@/lib/subseasonal";
+import { openAsk } from "@/lib/chat/open-ask";
 import { useSiteContent } from "@/lib/content/content-context";
 import type { AdvisoryContent } from "@/lib/content/advisory-content";
 import { buildSubseasonalAdvisory, isCropKey } from "@/lib/subseasonal-advisory";
@@ -1367,6 +1368,11 @@ export function SubseasonalDrawer({ state, onSeekDay }: { state: SubseasonalStat
               period={advisoryPeriod}
               issued={run ? formatDay(run.init_time.slice(0, 10), "short") : undefined}
             />
+
+            <button type="button" className="ss-bulletin-link ss-ask-link" onClick={() => openAsk()} data-testid="drawer-ask">
+              <span>Ask about {header.heading}</span>
+              <small>Past rain, normals and charts, answered with live data</small>
+            </button>
 
             {series.kind === "district" ? (
               <a

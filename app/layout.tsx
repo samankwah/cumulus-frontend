@@ -7,6 +7,7 @@ import "leaflet/dist/leaflet.css";
 
 import "./globals.css";
 import "./subseasonal.css";
+import "./chat.css";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],

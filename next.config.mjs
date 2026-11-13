@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
+    // The chat proxy talks socket.io from the server; bundling would swap in browser transports.
+    serverComponentsExternalPackages: ["socket.io-client", "engine.io-client", "ws"],
     // The bulletin reads the district list on the server; ship the file with its functions.
     outputFileTracingIncludes: {
       "/bulletin": ["./public/data/ghana_district_polygons_simplified.geojson"],

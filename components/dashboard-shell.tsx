@@ -10,10 +10,12 @@ import type { AreaSearchResult } from "@/components/area-search";
 import type { AreaHoverProvider, MapControlsHandle } from "@/components/forecast-raster-map";
 import { MapZoomControls } from "@/components/map-zoom-controls";
 import { BrandLogo } from "@/components/brand-logo";
+import { AskAssistant } from "@/components/chat/ask-assistant";
 import { RunBadge, SubseasonalDock, SubseasonalPanel } from "@/components/subseasonal/subseasonal-panel";
 import { SubseasonalDrawer } from "@/components/subseasonal/subseasonal-drawer";
 import { useCumulusDashboard } from "@/hooks/use-cumulus-dashboard";
 import { useSubseasonal } from "@/hooks/use-subseasonal";
+import type { ChatContext } from "@/lib/chat/types";
 import { useSiteContent } from "@/lib/content/content-context";
 import { districtFullName, isPointInGeometry, loadMapData } from "@/lib/map-data";
 import {
@@ -52,6 +54,7 @@ export function DashboardShell() {
   const [view, setView] = useState<DashboardView>("subseasonal");
   const [mapControls, setMapControls] = useState<MapControlsHandle | null>(null);
   const [hasReadUrl, setHasReadUrl] = useState(false);
+  const [isAskOpen, setIsAskOpen] = useState(false);
 
   // The view comes from the URL on the client only (static export renders the default).
   useEffect(() => {
@@ -71,6 +74,8 @@ export function DashboardShell() {
     root.classList.add("safari-runway");
     let touching = false;
     const settle = () => {
+      // Typing in the assistant: Safari scrolls the page to keep the box above the keyboard; don't fight it.
+      if (document.activeElement?.closest?.(".ask-panel")) return;
       const runway = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
       if (!touching && runway > 0 && Math.abs(window.scrollY - runway) > 0.5) {
         window.scrollTo(0, runway);
@@ -364,10 +369,39 @@ export function DashboardShell() {
     .filter(Boolean)
     .join(" · ");
 
+  // What the assistant is told the visitor is looking at (the 46-day view's selected place and run).
+  const askContext = useMemo<{ context: ChatContext | null; label: string | null }>(() => {
+    if (!isSubseasonal) return { context: null, label: null };
+    const { selection, run, layer } = subseasonal;
+    const base: ChatContext = {
+      ...(run ? { runDate: run.init_time.slice(0, 10), modelLabel: run.model_label } : {}),
+      layerLabel: layerLabel(run, layer),
+    };
+    if (selection?.kind === "area") {
+      return {
+        context: {
+          ...base,
+          areaName: selection.name,
+          regionName: selection.regionName,
+          level: selection.level === "region" ? "region" : "district",
+          latitude: selection.latitude,
+          longitude: selection.longitude,
+        },
+        label: selection.level === "region" || !selection.regionName ? selection.name : `${selection.name} · ${selection.regionName}`,
+      };
+    }
+    if (selection?.kind === "point") {
+      const lat = `${Math.abs(selection.latitude).toFixed(2)}°${selection.latitude >= 0 ? "N" : "S"}`;
+      const lon = `${Math.abs(selection.longitude).toFixed(2)}°${selection.longitude >= 0 ? "E" : "W"}`;
+      return { context: { ...base, latitude: selection.latitude, longitude: selection.longitude }, label: `${lat}, ${lon}` };
+    }
+    return { context: base, label: null };
+  }, [isSubseasonal, subseasonal]);
+
   return (
     <main className="spa-shell">
       <section
-        className={`atlas-stage${isSubseasonal ? " view-subseasonal" : ""}${isSubseasonal && subseasonal.isDrawerOpen ? " ss-drawer-open" : ""}`}
+        className={`atlas-stage${isSubseasonal ? " view-subseasonal" : ""}${isSubseasonal && subseasonal.isDrawerOpen ? " ss-drawer-open" : ""}${isAskOpen ? " ask-open" : ""}`}
       >
         <div className="map-frame" data-testid="map-frame">
           <ForecastRasterMap
@@ -448,6 +482,13 @@ export function DashboardShell() {
             onRetrySample={retrySample}
           />
         )}
+
+        <AskAssistant
+          open={isAskOpen}
+          onOpenChange={setIsAskOpen}
+          context={askContext.context}
+          contextLabel={askContext.label}
+        />
       </section>
     </main>
   );

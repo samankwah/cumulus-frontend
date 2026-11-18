@@ -190,8 +190,8 @@ function downscalingNote(option: ModelAxisOption) {
 
 /**
  * The model, as the modelling team describes it: a forecast model (the S2S source, e.g. Aurora with
- * its IMERG-calibrated rain) and how it is downscaled to 0.1° (UNet, diffusion ensemble or plain
- * bilinear interpolation). Two labelled menus; combinations without a run are listed but disabled.
+ * its IMERG-calibrated rain) and how it is downscaled to 0.1° (UNet, diffusion or flow-matching
+ * ensemble, or plain bilinear interpolation). Two labelled menus; combinations without a run are listed but disabled.
  * Renders nothing when the backend does not describe its models that way.
  */
 export function ModelChoice({

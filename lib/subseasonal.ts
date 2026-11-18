@@ -218,8 +218,8 @@ export type ModelGrid = {
   downscalers: ModelAxisOption[];
 };
 
-/** Downscalers in a fixed order: the default UNet, the ensemble, then the no-ML baseline. */
-const DOWNSCALING_ORDER = ["unet", "diffusion", "bilinear"];
+/** Downscalers in a fixed order: the default UNet, the two ensembles, then the no-ML baseline. */
+const DOWNSCALING_ORDER = ["unet", "diffusion", "flow_matching", "bilinear"];
 
 /**
  * Splits the flat model list into S2S source × downscaler around the current model. Null when the

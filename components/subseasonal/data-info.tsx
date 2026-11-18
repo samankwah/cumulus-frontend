@@ -5,10 +5,10 @@ import { useSiteContent } from "@/lib/content/content-context";
 import { formatDay, isInterpolatedRun } from "@/lib/subseasonal";
 import type { SubseasonalLayerKey, SubseasonalProvenance, SubseasonalRun } from "@/lib/subseasonal";
 
-/** "heun · 20 steps · guidance 3" from whichever sampler settings the run recorded. */
+/** "heun · 20 steps · guidance 3" (or "flow heun · …") from whichever sampler settings the run recorded. */
 function samplerText(provenance: SubseasonalProvenance) {
   const parts = [
-    provenance.sampler,
+    provenance.sampler?.replace(/_/g, " "),
     provenance.sampler_steps != null ? `${provenance.sampler_steps} steps` : null,
     provenance.guidance_scale != null ? `guidance ${provenance.guidance_scale}` : null,
   ].filter(Boolean);
